@@ -53,13 +53,6 @@ input.addEventListener('change', async () => {
     });
 }
 });
-// console.log(URL.createObjectURL(input));
-
-// const blob = new Blob([picture.data], { type: picture.format });
-// img.src = URL.createObjectURL(blob);
-
-const response = await fetch('album.json');
-const album = await response.json();
 
 const scene = document.querySelector('.scene');
 const list = document.querySelector('.list');
@@ -83,31 +76,6 @@ scene.addEventListener('wheel', onWheel);
 let currentIndex = null;
 
 const template = document.getElementById('vynil-template');
-// album.tracks.forEach(track => {
-//     const vynil = template.content.firstElementChild.cloneNode(true);
-    
-//     const front = vynil.querySelector('.vinyl__frontside');
-//     const back = vynil.querySelector('.vinyl__backside');
-
-//     const sideAlbum = vynil.querySelector('.vinyl__side__album');
-//     const sideTrack = vynil.querySelector('.vinyl__side__track');
-
-//     front.src = album.cover.large;
-//     back.src = album.cover.large;
-
-//     sideAlbum.textContent = album.album;
-//     sideTrack.textContent = track.title;
-
-//     list.append(vynil);
-
-//     vynil.addEventListener('click', () => {
-//         list.querySelectorAll('.slot--active')
-//         .forEach(slot => slot.classList.remove('slot--active'));
-
-//         playMusic(track.preview);
-//         currentIndex = vynil;
-//     });
-// });
 
 player.addEventListener('playing', () => {
     currentIndex?.classList.add('slot--active');
@@ -116,30 +84,12 @@ player.addEventListener('playing', () => {
 player.addEventListener('ended', () => {
     list.querySelectorAll('.slot--active')
         .forEach(slot => slot.classList.remove('slot--active'));
+    
 
     const arr = Array.from(list);
     console.log(arr);
     console.log(arr.indexOf(currentIndex));
 });
-
-
-
-
-
-
-const rgbToHsl = (r, g, b) => {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const l = (max + min) / 2;
-    const d = max - min;
-    if (!d) return { h: 0, s: 0, l };
-
-    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    const h = max === r ? ((g - b) / d + (g < b ? 6 : 0))
-            : max === g ? ((b - r) / d + 2)
-            :             ((r - g) / d + 4);
-    return { h: h * 60, s, l };
-};
 
 const extractSpineColor = (img, { size = 32, shift = 6, minScore = 2 } = {}) => {
     const canvas = new OffscreenCanvas(size, size);
