@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <title>Vinilyed — Responsive Music Player</title>
+
+        <script type="importmap">
+            { "imports": { "music-metadata": "https://esm.sh/music-metadata@11" } }
+        </script>
+
+        <link rel="stylesheet" href="style.css">
+        <script src="app.js" type="module"></script>
+    </head>
+    <body>
+        <div class="layout">
+            <input class="input" type="file" accept="audio/*" multiple>
+            <div class="main">
+                <div class="scene">
+                    <ul class="list"></ul>
+                </div>
+            </div>
+        </div>
+
+        <template id="vynil-template">
+            <li class="slot">
+                <div class="vinyl">
+                    <img src="" alt="" class="vinyl__frontside"></img>
+                    <div class="vinyl__side">
+                        <p class="vinyl__side__album">Album</p>
+                        <p class="vinyl__side__track">Track</p>
+                    </div>
+                    <img src="" alt="" class="vinyl__backside"></img>
+                </div>
+            </li>
+        </template>
+
+        <audio class="player" src="" preload="none"></audio>
+    </body>
+</html>
