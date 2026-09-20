@@ -1,5 +1,7 @@
 import { parseBlob, selectCover } from 'music-metadata';
 
+const template = document.getElementById('vynil-template');
+
 const input = document.querySelector('.input');
 input.addEventListener('change', async () => {
     const files = [...input.files];
@@ -74,8 +76,6 @@ const onWheel = event => {
 scene.addEventListener('wheel', onWheel);
 
 let currentIndex = null;
-
-const template = document.getElementById('vynil-template');
 
 player.addEventListener('playing', () => {
     currentIndex?.classList.add('slot--active');
