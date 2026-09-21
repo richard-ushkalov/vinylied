@@ -1,7 +1,7 @@
 :root {
-    --perspective: 1800px;
+    --perspective: 1000px;
 
-    --vinyl-size: 50cqmin;
+    --vinyl-size: 40cqmin;
     --vynil-side-divider: 20;
 
     --animation-base-time: 1200ms;
@@ -84,7 +84,11 @@ button, select, input, textarea { font: inherit; }
     justify-content: center;
     align-items: center;
 
+    padding-block: calc(var(--vinyl-size) / 10);
+
     transform-style: preserve-3d;
+
+    transition: padding-block var(--animation-base-time) var(--fade-out);
 }
 .slot {
     display: flex;
@@ -103,13 +107,19 @@ button, select, input, textarea { font: inherit; }
     transform: translateZ(calc(var(--vinyl-size) / 2)) rotateX(-90deg);
 }
 .slot--active {
+    padding-block: calc(var(--vinyl-size) / 2);
+
     .vinyl {
-        transform: translateZ(var(--vinyl-size));
+        transform:
+            translateZ(calc(-1 * var(--vinyl-size) / 2))
+            rotateX(-90deg);
     }
 }
 .slot--active:hover {
     .vinyl {
-        transform: translateZ(var(--vinyl-size));
+        transform:
+            translateZ(calc(var(--vinyl-size) / 2))
+            rotateX(-45deg);
     }
 }
 

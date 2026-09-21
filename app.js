@@ -11,15 +11,7 @@ const player = createPlayer();
 let items = [];
 let current = null;
 
-const scroll = createScroll({
-    viewport: scene,
-    strip: list,
-    openSpace: 500,
-    onFocus: index => {
-        items.forEach(({ element }, i) =>
-            element.classList.toggle('slot--focused', i === index));
-    },
-});
+const scroll = createScroll(scene);
 scroll.attach();
 
 const createShelf = async files => {
@@ -37,22 +29,26 @@ const createShelf = async files => {
 
             const index = items.length;
             element.addEventListener('click', () => {
-                scroll.goTo(index);
                 current = element;
                 player.playTrack(track.src);
+                scroll.centerOn(index);
             });
 
             items.push({ track, element });
         } catch (error) { console.error('Error on create: ', error.name, error.message); }
     }
-    scroll.setCount(items.length);
+
+    scroll.refresh();
 }
 
 const input = createInputReader(document.querySelector('.input'));
 input.onChange(createShelf);
 
 const render = () => {
-    items.forEach(({ element }) => element.classList.toggle('slot--active', element === current && !player.isPaused()));
+    items.forEach(({ element }) =>
+        element.classList.toggle('slot--active', element === current && !player.isPaused()));
+
+    setTimeout(() => scroll.centerOn(items.findIndex(({ element }) => element === current)), 400);
 };
 
 const playNext = () => {
