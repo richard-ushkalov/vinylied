@@ -17,10 +17,5 @@ export const createVinyl = track => {
     }
     frontSide.alt = `${track.album} — ${track.title}`;
 
-    if (track.spine) {
-        vinyl.style.setProperty('--spine', track.spine);
-        vinyl.style.setProperty('--spine-text', track.spineText);
-    }
-
     return vinyl;
 };

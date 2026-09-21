@@ -1,0 +1,26 @@
+const template = document.getElementById('player-template');
+
+export const createPlayer = () => {
+    const player = template.content.firstElementChild.cloneNode(true);
+
+    document.querySelector('.layout').append(player);
+
+    return {
+        element: player,
+        playTrack(source) {
+            player.src = source;
+            player.play().catch(error => {
+                if (error.name === 'AbortError') return;
+                console.error('Error on play:', error.name, error.message);
+            });
+        },
+        pause:  () => player.pause(),
+        resume: () => player.play().catch(error => {
+            if (error.name === 'AbortError') return;
+            console.error('Error on resume:', error.name, error.message);
+        }),
+        isPaused: () => player.paused,
+        isEnded: () => player.ended,
+        on: (type, handler) => player.addEventListener(type, handler)
+    }
+};

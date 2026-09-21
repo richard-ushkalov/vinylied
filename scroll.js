@@ -1,4 +1,6 @@
-export const createScroll = viewport => {
+export const createScroll = (viewport, { onScrub } = {}) => {
+    let lastPos = 0;
+    let speed = 0;          // px за кадр, сглаженно — им правим размытие
     const list = document.querySelector('.list');
 
     let currentPos = 0;
@@ -8,6 +10,7 @@ export const createScroll = viewport => {
     let frame = 0;
 
     let currentIndex = 0;
+    let focusedIndex = -1;
 
     const getCenter = () => { return viewport.getBoundingClientRect().top + viewport.clientHeight / 2; }
 
@@ -22,18 +25,9 @@ export const createScroll = viewport => {
     };
 
     const snap = () => {
-        const slots = [...list.children];
-        if (!slots.length) return;
-
-        const center = getCenter();
-        let nearest = 0, best = Infinity;
-        slots.forEach((slot, index) => {
-            const rect = slot.getBoundingClientRect();
-            const distance = Math.abs(rect.top + rect.height / 2 - center);
-            if (distance < best) { best = distance; nearest = index; }
-        });
-
-        centerOn(nearest);
+        updateSlots();
+        if (focusedIndex >= 0) centerOn(focusedIndex);
+        onScrub?.(0);              // остановились — фильтр открывается
     };
 
     const onWheel = event => {
@@ -44,16 +38,75 @@ export const createScroll = viewport => {
 
         draw();
 
+        // насколько закрыть фильтр — по скорости, а не «крутим/не крутим».
+        // Чуть подвинул — почти не слышно, гоняешь быстро — уходит в подушку.
+        onScrub?.(Math.min(1, Math.abs(event.deltaY) / 260));
+
         clearTimeout(snapTimer);
-        snapTimer = setTimeout(snap, 230);
+        snapTimer = setTimeout(snap, 120);
+    };
+
+    // ближайший к центру получает .slot--focused.
+    // Классы пишем ТОЛЬКО когда ближайший сменился, а не каждый кадр.
+    const FISH_ANGLE = 20;    // градусов наклона у краёв
+    const FISH_DEPTH = 140;   // насколько края утопают вглубь
+    const FISH_SPREAD = 320;  // на какой дистанции эффект набирает силу
+    const MAX_BLUR    = 4;    // px размытия у самых дальних  // на какой дистанции эффект набирает силу
+
+    // один проход: и наклон по расстоянию до центра, и отметка ближайшего
+    const updateSlots = () => {
+        const slots = [...list.children];
+        if (!slots.length) return;
+
+        // насколько быстро едем: сглаживаем, чтобы размытие не дёргалось
+        const moved = Math.abs(currentPos - lastPos);
+        lastPos = currentPos;
+        speed += (moved - speed) * 0.25;
+        const rush = Math.min(1, speed / 26);     // 0 — стоим, 1 — быстро
+
+        const center = getCenter();
+        let nearest = 0, best = Infinity;
+
+        slots.forEach((slot, index) => {
+            const rect = slot.getBoundingClientRect();
+            const offset = rect.top + rect.height / 2 - center;
+
+            const distance = Math.abs(offset);
+            if (distance < best) { best = distance; nearest = index; }
+
+            // рыбий глаз: чем дальше от центра, тем сильнее наклон и утопание
+            const t = Math.max(-1, Math.min(1, offset / FISH_SPREAD));
+            slot.style.transform =
+                `translateZ(${-Math.abs(t) * FISH_DEPTH}px) rotateX(${-t * FISH_ANGLE}deg)`;
+
+            // Размытие вешаем на ГРАНИ, а не на слот.
+            // Любой filter принудительно делает transform-style: flat — на слоте
+            // это убило бы перспективу всей коробки. Грани и так плоские,
+            // им терять нечего. Возле центра свойство СНИМАЕМ (не blur(0)).
+            // у краёв размывает всегда, в движении — ещё и по центру
+            const blur = Math.max(0, (Math.abs(t) + rush * 0.9) * MAX_BLUR - 0.4);
+            const value = blur > 0.25 ? `blur(${blur.toFixed(2)}px)` : '';
+            slot.style.filter = '';
+            for (const face of slot.querySelectorAll('.vinyl > *')) face.style.filter = value;
+        });
+
+        if (nearest === focusedIndex) return;
+        focusedIndex = nearest;
+
+        // короткий отклик при смене центрального.
+        // Работает на Android; iOS Safari и трекпады Mac этого API не имеют.
+        navigator.vibrate?.(8);
+        slots.forEach((slot, index) =>
+            slot.classList.toggle('slot--focused', index === nearest));
     };
 
     const draw = () => {
         list.style.transform = `translateY(${currentPos}px)`;
+        updateSlots();
     };
 
     const loop = () => {
-        currentPos += (targetPos - currentPos) * 0.15;
+        currentPos += (targetPos - currentPos) * 0.05;
 
         if (Math.abs(currentPos - targetPos) < 0.5) {
             currentPos = targetPos;
@@ -74,20 +127,33 @@ export const createScroll = viewport => {
 
     const observer = new ResizeObserver(() => {
         clearTimeout(layoutTimer);
-        layoutTimer = setTimeout(() => centerOn(currentIndex), 120);
+        layoutTimer = setTimeout(() => centerOn(currentIndex), 400);
     });
 
     const observeAll = () => {
         observer.disconnect();
         observer.observe(list);
         for (const slot of list.children) observer.observe(slot);
+
+        focusedIndex = -1;   // состав полки сменился — прежний индекс не значит ничего
+        draw();              // сразу отметить ближайшего, не дожидаясь прокрутки
     };
 
     return { 
         attach() {
             viewport.addEventListener('wheel', onWheel, { passive: true });
+
+            // Клик центрирует ДО того, как слот раскрылся: centerOn меряет
+            // положение, которое через миг изменится. Поэтому пересчитываем,
+            // когда переход отступов реально закончился.
+            // transitionend всплывает, поэтому хватает одного слушателя на списке.
+            list.addEventListener('transitionend', event => {
+                if (event.propertyName !== 'padding-top') return;
+                centerOn(currentIndex);
+            });
         },
         refresh: observeAll,
         centerOn,
+        getFocused: () => focusedIndex,
     }
 }
