@@ -4,14 +4,14 @@
  * Две особенности, из-за которых код выглядит именно так:
  *
  * 1. У плеера на буфере нет события timeupdate — позицию приходится
- *    опрашивать самим. Делаем это в rAF и ТОЛЬКО пока играет:
- *    на паузе цикл гасится, иначе он жёг бы батарею впустую.
+ *    опрашивать самим. Делаем это в rAF и ТОЛЬКО пока крутится диск:
+ *    встал — цикл гаснет, иначе он жёг бы батарею впустую.
  *
  * 2. Перемотка на буфере — это пересоздание источника. Дёргать её на
  *    каждое движение пальца слишком дорого, поэтому во время протяжки
  *    двигаем только картинку, а seek зовём один раз, когда отпустили.
  */
-export const createProgress = ({ root, player }) => {
+export const createProgress = ({ root, player, onTick }) => {
     const fill = root.querySelector('.progress__fill');
     const handle = root.querySelector('.progress__handle');
 
@@ -33,11 +33,15 @@ export const createProgress = ({ root, player }) => {
     };
 
     const tick = () => {
-        if (!dragging) show(player.currentTime() / (player.duration() || 1));
-        frame = player.isPaused() ? 0 : requestAnimationFrame(tick);
+        const time = player.currentTime();
+        if (!dragging) show(time / (player.duration() || 1));
+        onTick?.(time);                  // тем же кадром крутим пластинку
+        // Живём по СКОРОСТИ, а не по isPaused(): пауза поднимается в начале
+        // торможения, и полсекунды выбега диска мы бы просто не нарисовали.
+        frame = player.playbackRate() > 0 ? requestAnimationFrame(tick) : 0;
     };
 
-    const start = () => { if (!frame && !player.isPaused()) frame = requestAnimationFrame(tick); };
+    const start = () => { if (!frame && player.playbackRate() > 0) frame = requestAnimationFrame(tick); };
     const stop  = () => { cancelAnimationFrame(frame); frame = 0; };
 
     root.addEventListener('pointerdown', event => {
@@ -69,7 +73,8 @@ export const createProgress = ({ root, player }) => {
         if (moved) root.classList.add('progress--rewind');   // после протяжки — доводка
         player.seek(fromEvent(event) * player.duration());
         player.scrub(0);            // фильтр плавно открывается на новом месте
-        setTimeout(() => root.classList.remove('progress--rewind'), 450);
+
+        setTimeout(() => root.classList.remove('progress--rewind'), 580);
         start();
     };
     root.addEventListener('pointerup', release);
@@ -90,14 +95,16 @@ export const createProgress = ({ root, player }) => {
         show(player.currentTime() / (player.duration() || 1));
         start();
     });
-    player.on('pause',   stop);
+    // Слушателя 'pause' здесь нет намеренно: гасить кадры на паузе больше
+    // нельзя, иначе диск замрёт на полном ходу вместо выбега. Цикл догорает
+    // сам, когда скорость дойдёт до нуля — то есть ровно когда диск встал.
     player.on('ended',   () => { stop(); show(0); });
     // При смене трека полоса не прыгает, а отматывается: включаем переход
     // разово классом и снимаем его, чтобы он не мешал покадровым обновлениям.
     player.on('emptied', () => {
         root.classList.add('progress--rewind');
         show(0);
-        setTimeout(() => root.classList.remove('progress--rewind'), 450);
+        setTimeout(() => root.classList.remove('progress--rewind'), 580);
     });
 
     show(0);

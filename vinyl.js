@@ -17,6 +17,10 @@ export const createVinyl = track => {
     }
     frontSide.alt = `${track.album} — ${track.title}`;
 
+    // на пластинку идёт только этикетка; сам винил чёрный
+    const label = vinyl.querySelector('.disc__label');
+    if (label && track.cover) label.style.setProperty('--disc-art', `url("${track.cover}")`);
+
     if (track.spine) {
         vinyl.style.setProperty('--spine', track.spine);
         vinyl.style.setProperty('--spine-text', track.spineText);

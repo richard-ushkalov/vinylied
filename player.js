@@ -29,7 +29,11 @@ export const createPlayer = () => {
     let startedAt = 0;        // ctx.currentTime на момент старта
     let paused = true;
     let stopping = false;     // идёт торможение
-    let generation = 0;       // счётчик команд: отложенное действие проверяет, актуально ли оно
+    // ДВА разных счётчика. Раньше был один, и playTrack проверял его же,
+    // который менял spinDown, — проверка никогда не проходила и новый трек
+    // не запускался. Один счётчик не может сторожить две разные вещи.
+    let stopToken = 0;        // сторожит отложенную остановку внутри spinDown
+    let playToken = 0;        // сторожит playTrack от более свежего запуска
     const buffers = new Map();// кеш декодированных треков (текущий + предзагруженный)
 
     const emit = type => bus.dispatchEvent(new Event(type));
@@ -64,13 +68,22 @@ export const createPlayer = () => {
         source.playbackRate.setValueAtTime(SLOW_RATE, now);
         source.playbackRate.exponentialRampToValueAtTime(1, now + SPIN_UP);
 
-        source.onended = () => { if (!stopping) { paused = true; emit('ended'); } };
+        source.onended = () => {
+            if (stopping) return;   // это наше торможение, им занят spinDown
+            // Узел кончился сам — снимаем его СРАЗУ. Иначе следующий playTrack
+            // увидит живой source и честно отработает 550 мс торможения уже
+            // мёртвого узла, а playbackRate.value у него навсегда застыл
+            // на единице — диск крутился бы на полном ходу поверх тишины.
+            hardStop();
+            paused = true;
+            emit('ended');
+        };
         source.start(0, offset);
 
         startedAt = now;
         paused = false;
         stopping = false;
-        generation++;            // всё, что было запланировано раньше, устарело
+        stopToken++;             // отложенная остановка устарела
         chain.crackleOn();
         emit('playing');
     };
@@ -104,14 +117,12 @@ export const createPlayer = () => {
         paused = true;
         emit('pause');
 
-        const mine = ++generation;
+        const mine = ++stopToken;
         setTimeout(() => {
             stopping = false;      // ВСЕГДА, иначе onended навсегда подавлён
-                                   // и автопереход на следующий трек умирает
-            // За время выбега могли нажать «играть» — тогда источник уже
-            // другой, и глушить его нельзя.
-            if (mine !== generation) { done(); return; }
-            hardStop();
+            // за время выбега могли запустить заново — тогда источник уже
+            // другой, и глушить его нельзя
+            if (mine === stopToken) hardStop();
             done();
         }, SPIN_DOWN * 1000);
     });
@@ -119,6 +130,25 @@ export const createPlayer = () => {
     const position = () => {
         if (!source || paused) return offset;
         return Math.min(buffer.duration, offset + (ctx.currentTime - startedAt));
+    };
+
+    /**
+     * Мгновенная скорость воспроизведения: 0 — диск стоит, 1 — номинал.
+     *
+     * Спрашиваем движок, а не считаем экспоненту заново в JS: рампу он уже
+     * ведёт сэмплово-точно, а вторая копия той же кривой рано или поздно
+     * разъедется со звуком — забыли сбросить при seek или при конце трека,
+     * и диск крутится под молчащий динамик.
+     *
+     * Врёт параметр только про остановку: экспоненциальная рампа не умеет
+     * дойти до нуля и замирает на STOP_RATE. Поэтому «стоим или нет» решаем
+     * по своим флагам, а .value читаем только там, где он что-то значит.
+     * Имя speed, а не rate: внутри spinDown уже есть локальная rate.
+     */
+    const speed = () => {
+        if (!source) return 0;               // источника нет — крутить нечего
+        if (paused && !stopping) return 0;   // пауза уже доехала
+        return source.playbackRate.value;    // разгон, ровный ход, выбег
     };
 
     return {
@@ -137,9 +167,9 @@ export const createPlayer = () => {
 
         async playTrack(src) {
             await ensure();
-            const mine = ++generation;
+            const mine = ++playToken;
             await spinDown();               // прежняя пластинка тормозит до конца
-            if (mine !== generation) return;   // пока тормозили, нажали другое
+            if (mine !== playToken) return;    // пока тормозили, запустили другой трек
 
             emit('emptied');
 
@@ -147,7 +177,7 @@ export const createPlayer = () => {
                 const response = await fetch(src);
                 buffers.set(src, await ctx.decodeAudioData(await response.arrayBuffer()));
             }
-            if (mine !== generation) return;
+            if (mine !== playToken) return;
 
             buffer = buffers.get(src);
 
@@ -177,6 +207,7 @@ export const createPlayer = () => {
         scrub: amount => chain?.scrub(amount),
 
         isPaused: () => paused,
+        playbackRate: speed,   // картинке: диск крутится ровно так, как звучит
         currentTime: position,
         duration: () => buffer?.duration ?? 0,
         on: (type, handler) => bus.addEventListener(type, handler),

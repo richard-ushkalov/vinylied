@@ -36,12 +36,23 @@
         <template id="vinyl-template">
             <li class="slot">
                 <div class="vinyl">
-                    <img src="" alt="" class="vinyl__frontside">
-                    <div class="vinyl__side">
-                        <p class="vinyl__side__album"></p>
-                        <p class="vinyl__side__title"></p>
+                    <!-- пластинка лежит ВНУТРИ конверта и остаётся на месте -->
+                    <div class="disc">
+                        <div class="disc__label"></div>
                     </div>
-                    <img src="" alt="" class="vinyl__backside">
+
+                    <!-- конверт: шесть граней, при игре отъезжает вбок -->
+                    <div class="vinyl__box">
+                        <img src="" alt="" class="vinyl__frontside">
+                        <img src="" alt="" class="vinyl__backside">
+                        <div class="vinyl__side">
+                            <p class="vinyl__side__album"></p>
+                            <p class="vinyl__side__title"></p>
+                        </div>
+                        <div class="vinyl__edge vinyl__edge--far"></div>
+                        <div class="vinyl__edge vinyl__edge--left"></div>
+                        <div class="vinyl__edge vinyl__edge--right"></div>
+                    </div>
                 </div>
             </li>
         </template>

@@ -8,7 +8,34 @@ const list = document.querySelector('.list');
 const scene = document.querySelector('.scene');
 
 const player = createPlayer();
-const progress = createProgress({ root: document.querySelector('.progress'), player });
+const DEGREES_PER_SECOND = 200;   // 33⅓ оборота в минуту, как у настоящей пластинки
+
+let spin = 0;        // накопленный угол диска, градусов
+let lastFrame = 0;   // performance.now() прошлого кадра; 0 — диск стоял
+
+const progress = createProgress({
+    root: document.querySelector('.progress'),
+    player,
+    // Угол КОПИМ по фактической скорости звука, а не считаем из позиции.
+    // Позиция идёт по часам контекста и про разгон с торможением не знает —
+    // из-за этого диск крутился ровно, пока звук ещё раскручивался.
+    // А накопление заодно убирает рывок при перемотке: на вертушке игла
+    // переезжает, а пластинка просто крутится дальше.
+    onTick: () => {
+        const rate = player.playbackRate();
+        const now = performance.now();
+
+        // Диск стоит — копить не от чего. И вкладка могла провисеть в фоне:
+        // без потолка первый кадр после возврата швырнул бы диск на пол-оборота.
+        const dt = rate && lastFrame ? Math.min((now - lastFrame) / 1000, 0.05) : 0;
+        lastFrame = rate ? now : 0;
+
+        // % 360 безопасен ТОЛЬКО пока у .disc нет перехода по transform:
+        // иначе скачок 359° → 0° проигрался бы как оборот назад.
+        spin = (spin + rate * DEGREES_PER_SECOND * dt) % 360;
+        current?.querySelector('.disc')?.style.setProperty('--disc-spin', `${spin}deg`);
+    },
+});
 
 let items = [];
 let current = null;
@@ -57,16 +84,17 @@ input.onChange(createShelf);
 
 // рисует по ФАКТУ, ничего не решает и никого не двигает
 const render = () => {
-    // НЕ player.isPaused(): при смене src он на миг становится true,
-    // и конверт успевал дёрнуться в состояние паузы и обратно
-    const playing = current !== null && intent === 'playing';
-
+    // Вид текущего трека от паузы НЕ зависит: конверт остаётся отъехавшим,
+    // пластинка — снаружи. Пауза читается по остановившемуся диску, а по
+    // открытому конверту сразу видно, какой трек сейчас выбран.
     items.forEach(({ element }) => {
-        element.classList.toggle('slot--active', element === current && playing);
-        element.classList.toggle('slot--paused', element === current && !playing);
+        element.classList.toggle('slot--current', element === current);
     });
 
     if ('mediaSession' in navigator) {
+        // НЕ player.isPaused(): при смене src он на миг становится true,
+        // и системная панель успевала мигнуть паузой
+        const playing = current !== null && intent === 'playing';
         navigator.mediaSession.playbackState =
             current === null ? 'none' : playing ? 'playing' : 'paused';
     }
@@ -139,3 +167,6 @@ if ('mediaSession' in navigator) {
 
 ['playing', 'pause', 'ended', 'emptied'].forEach(type => player.on(type, render));
 player.on('ended', playNext);
+
+// новая пластинка начинается с нулевого угла, а не с угла предыдущей
+player.on('emptied', () => { spin = 0; lastFrame = 0; });

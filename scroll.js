@@ -40,7 +40,7 @@ export const createScroll = (viewport, { onScrub } = {}) => {
 
         // насколько закрыть фильтр — по скорости, а не «крутим/не крутим».
         // Чуть подвинул — почти не слышно, гоняешь быстро — уходит в подушку.
-        onScrub?.(Math.min(1, Math.abs(event.deltaY) / 260));
+        onScrub?.(Math.min(1, Math.abs(event.deltaY) / 150));
 
         clearTimeout(snapTimer);
         snapTimer = setTimeout(snap, 120);
@@ -51,7 +51,7 @@ export const createScroll = (viewport, { onScrub } = {}) => {
     const FISH_ANGLE = 20;    // градусов наклона у краёв
     const FISH_DEPTH = 140;   // насколько края утопают вглубь
     const FISH_SPREAD = 320;  // на какой дистанции эффект набирает силу
-    const MAX_BLUR    = 4;    // px размытия у самых дальних  // на какой дистанции эффект набирает силу
+    const MAX_BLUR    = 4;    // px размытия у самых дальних
 
     // один проход: и наклон по расстоянию до центра, и отметка ближайшего
     const updateSlots = () => {
@@ -79,15 +79,21 @@ export const createScroll = (viewport, { onScrub } = {}) => {
             slot.style.transform =
                 `translateZ(${-Math.abs(t) * FISH_DEPTH}px) rotateX(${-t * FISH_ANGLE}deg)`;
 
-            // Размытие вешаем на ГРАНИ, а не на слот.
-            // Любой filter принудительно делает transform-style: flat — на слоте
-            // это убило бы перспективу всей коробки. Грани и так плоские,
-            // им терять нечего. Возле центра свойство СНИМАЕМ (не blur(0)).
             // у краёв размывает всегда, в движении — ещё и по центру
             const blur = Math.max(0, (Math.abs(t) + rush * 0.9) * MAX_BLUR - 0.4);
             const value = blur > 0.25 ? `blur(${blur.toFixed(2)}px)` : '';
-            slot.style.filter = '';
-            for (const face of slot.querySelectorAll('.vinyl > *')) face.style.filter = value;
+
+            // Размытие вешаем на КОНЕЧНЫЕ грани — ни на слот, ни на .vinyl__box.
+            // Любой filter принудительно делает элементу transform-style: flat,
+            // и всё 3D под ним схлопывается: на слоте пропадала перспектива,
+            // на коробке — сами обложки (мерил: 0px высоты вместо 180).
+            // Грани и так плоские, им терять нечего.
+            // .disc сюда НЕ входит по тому же правилу: внутри у него своя
+            // этикетка, и filter отобрал бы у неё 3D-контекст.
+            // Возле центра свойство СНИМАЕМ совсем, а не ставим blur(0).
+            for (const face of slot.querySelectorAll('.vinyl__box > *')) {
+                face.style.filter = value;
+            }
         });
 
         if (nearest === focusedIndex) return;
@@ -108,13 +114,16 @@ export const createScroll = (viewport, { onScrub } = {}) => {
     const loop = () => {
         currentPos += (targetPos - currentPos) * 0.05;
 
-        if (Math.abs(currentPos - targetPos) < 0.5) {
-            currentPos = targetPos;
-            frame = 0;
-        } else {
-            frame = requestAnimationFrame(loop);
-        }
-        draw();
+        const arrived = Math.abs(currentPos - targetPos) < 0.5;
+        if (arrived) currentPos = targetPos;
+
+        draw();                   // здесь же пересчитывается speed
+
+        // Держим кадры, пока не доехали ИЛИ пока не осела скорость.
+        // Раньше условием было только «доехали»: если стопка уже стояла
+        // по центру, цикл выходил на первом кадре и размытие замирало
+        // на том значении, что было в момент отпускания колеса.
+        frame = (!arrived || speed > 0.2) ? requestAnimationFrame(loop) : 0;
     }
 
     const start = () => {
@@ -142,6 +151,16 @@ export const createScroll = (viewport, { onScrub } = {}) => {
     return { 
         attach() {
             viewport.addEventListener('wheel', onWheel, { passive: true });
+
+            // requestAnimationFrame замирает в скрытой вкладке. Если её
+            // свернули посреди доводки, запрошенный кадр не придёт, а frame
+            // останется занятым — и start() откажется перезапускать цикл:
+            // стопка застынет на полпути, размытие — на последнем значении.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState !== 'visible') return;
+                frame = 0;
+                start();
+            });
 
             // Клик центрирует ДО того, как слот раскрылся: centerOn меряет
             // положение, которое через миг изменится. Поэтому пересчитываем,
