@@ -1,0 +1,50 @@
+{
+  "id": "./",
+  "name": "Vinilyed — полка с пластинками",
+  "short_name": "Vinilyed",
+  "description": "Полка с виниловыми пластинками для вашей музыки. Работает без интернета.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "share_target": {
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [
+        {
+          "name": "audio",
+          "accept": ["audio/*", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wav", ".aif", ".aiff", ".webm"]
+        }
+      ]
+    }
+  },
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "audio/mpeg": [".mp3"],
+        "audio/mp4": [".m4a", ".aac"],
+        "audio/flac": [".flac"],
+        "audio/ogg": [".ogg", ".oga", ".opus"],
+        "audio/wav": [".wav"],
+        "audio/aiff": [".aif", ".aiff"]
+      }
+    }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" }
+}

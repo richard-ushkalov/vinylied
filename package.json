@@ -10,9 +10,10 @@
     "icons": "node tools/make-icons.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -p jsconfig.json",
-    "test": "node --test tests/unit/",
+    "test": "node --test \"tests/unit/*.test.js\"",
     "test:e2e": "playwright test",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "precache": "node tools/precache.mjs"
   },
   "license": "ISC",
   "devDependencies": {

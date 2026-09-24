@@ -24,7 +24,7 @@ export default [
         },
     },
     {
-        files: ['tools/**/*.{js,mjs}', 'tests/**/*.js', '*.config.js'],
+        files: ['tools/**/*.{js,mjs}', 'tests/**/*.{js,mjs}', '*.config.js'],
         languageOptions: {
             ecmaVersion: 2024,
             sourceType: 'module',
