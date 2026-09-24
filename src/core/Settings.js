@@ -9,6 +9,13 @@ import { LocalStore } from './LocalStore.js';
  */
 
 /**
+ * Адрес сервера — только origin, без пути: https на любой хост или http
+ * на этот же компьютер (для разработки). Иначе браузер всё равно не
+ * пустит запрос со страницы по https.
+ */
+const SERVER_ORIGIN = /^(?:https:\/\/[a-z0-9.-]+|http:\/\/(?:localhost|127\.0\.0\.1))(?::\d{1,5})?$|^$/i;
+
+/**
  * Схема настроек — единственный источник правды о том, что можно
  * настроить, в каких пределах и что стоит по умолчанию. Значения
  * по умолчанию повторяют поведение приложения до появления настроек.
@@ -39,6 +46,10 @@ export const SCHEMA = {
     onlineLookup: { type: 'boolean', default: true },
     // пусто — встроенный ключ из src/config.js
     acoustidKey:  { type: 'string', max: 32, pattern: /^[A-Za-z0-9]*$/, default: '' },
+    // скачивание со своего сервера (server/): код доступа и адрес;
+    // пустой адрес — встроенный из src/config.js
+    downloadCode:   { type: 'string', max: 64, pattern: /^[A-Za-z0-9_-]*$/, default: '' },
+    downloadServer: { type: 'string', max: 200, pattern: SERVER_ORIGIN, default: '' },
 };
 
 const VERSION = 1;

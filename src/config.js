@@ -14,3 +14,9 @@
  * Для коммерческого продукта у AcoustID отдельный платный тариф.
  */
 export const ACOUSTID_KEY = 'U2nhVTXKL3';
+
+/**
+ * Сервер скачивания (server/ в репозитории): Мак владельца за туннелем
+ * Cloudflare. Без кода доступа (Настройки → Скачивание) не используется.
+ */
+export const DOWNLOAD_SERVER = 'https://dl.richard-ushkalov.com';

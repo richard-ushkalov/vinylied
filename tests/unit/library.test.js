@@ -31,3 +31,19 @@ test('без хранилища полка живёт в памяти: импо�
     await library.remove(record.id);
     assert.equal(library.size, 0);
 });
+
+test('импорт с заранее выданным id: скачанный трек занимает место заготовки', async () => {
+    const { Library } = await import('../../src/library/Library.js');
+    const memory = new Map();
+    const db = { put: async (_, record) => memory.set(record.id, record), all: async () => [], delete: async () => {}, clear: async () => {} };
+    const reader = { read: async () => ({ title: 'T', artist: 'A', album: '', duration: 1, cover: null, spine: null, spineText: null }) };
+    const library = new Library({ db: /** @type {any} */ (db), reader: /** @type {any} */ (reader) });
+
+    const file = new File(['x'], 'Кино - Кукушка.m4a', { type: 'audio/mp4', lastModified: 1 });
+    const plain = new File(['y'], 'b.mp3', { type: 'audio/mpeg', lastModified: 2 });
+    const [downloaded, other] = await library.import([{ file, id: 'pending-1' }, plain]);
+    assert.equal(downloaded.id, 'pending-1');
+    assert.equal(library.get('pending-1')?.name, 'Кино - Кукушка.m4a');
+    assert.notEqual(other.id, 'pending-1');
+    assert.ok(memory.has('pending-1'));
+});

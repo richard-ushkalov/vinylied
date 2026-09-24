@@ -126,6 +126,12 @@
                         <svg aria-hidden="true"><use href="#i-close"/></svg>
                     </button>
                 </form>
+                <!-- «Скачать из сети» — над панелью, пока открыт поиск -->
+                <section class="suggest" aria-label="Скачать из сети" hidden>
+                    <button class="suggest__more" type="button" data-action="suggest-more">Нет нужного? Найти в сети</button>
+                    <p class="suggest__note" role="status"></p>
+                    <ul class="suggest__list"></ul>
+                </section>
                 <div class="dock__actions">
                     <button class="icon-button icon-button--primary" type="button" data-action="play" aria-label="Играть">
                         <svg aria-hidden="true"><use href="#i-play"/></svg>

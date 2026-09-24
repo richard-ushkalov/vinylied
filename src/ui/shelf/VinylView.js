@@ -7,13 +7,13 @@ const SWAP_MS = 400;          // столько же, сколько --dur-base
 export class VinylView {
     /** @type {HTMLLIElement} */
     element;
-    /** @type {import('../../library/Track.js').Track} */
+    /** @type {import('../../library/Track.js').Track | import('../../downloads/PendingTrack.js').PendingTrack} */
     track;
     #swapTimer = 0;
 
     /**
      * @param {HTMLTemplateElement} template
-     * @param {import('../../library/Track.js').Track} track
+     * @param {VinylView['track']} track
      */
     constructor(template, track) {
         this.element = /** @type {HTMLLIElement} */ (template.content.firstElementChild.cloneNode(true));
@@ -28,7 +28,7 @@ export class VinylView {
         this.render(track);
     }
 
-    /** @param {import('../../library/Track.js').Track} track */
+    /** @param {VinylView['track']} track */
     render(track) {
         this.track = track;
         this.album.textContent = track.album;
@@ -70,6 +70,23 @@ export class VinylView {
             this.render(track);
             this.element.classList.remove('slot--swap');
         }, SWAP_MS);
+    }
+
+    /**
+     * Скачивается: грани проявляются вместе с загрузкой (см. .slot--pending).
+     * null — скачано, конверт обычный.
+     * @param {number | null} fraction 0..1
+     */
+    setProgress(fraction) {
+        if (fraction === null) {
+            this.element.style.removeProperty('--progress');
+            this.render(this.track);    // подпись для экранного диктора — без процентов
+            return;
+        }
+        this.element.style.setProperty('--progress', fraction.toFixed(3));
+        const { title, artist } = this.track;
+        this.element.setAttribute('aria-label',
+            `${[title, artist].filter(Boolean).join(' — ')}: скачивается, ${Math.round(fraction * 100)}%`);
     }
 
     /** Ждём, пока обложка РЕАЛЬНО декодируется. */

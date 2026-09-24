@@ -3,16 +3,20 @@
  * создаются объекты и связываются их события. Сами классы про DOM
  * снаружи себя не знают: всё нужное получают в конструкторе.
  */
-import { ACOUSTID_KEY } from './config.js';
+import { ACOUSTID_KEY, DOWNLOAD_SERVER } from './config.js';
 import { FrameLoop } from './core/FrameLoop.js';
 import { Settings } from './core/Settings.js';
 import { tracksLabel } from './core/format.js';
 import { platform } from './core/platform.js';
 import { Player } from './audio/Player.js';
+import { DownloadQueue } from './downloads/DownloadQueue.js';
+import { DownloadServer } from './downloads/DownloadServer.js';
+import { PendingTrack } from './downloads/PendingTrack.js';
 import { Database } from './library/Database.js';
 import { Inbox } from './library/Inbox.js';
 import { Library } from './library/Library.js';
 import { Track } from './library/Track.js';
+import { sameSong } from './library/duplicates.js';
 import { TagReader } from './media/TagReader.js';
 import { AcoustIdClient } from './lookup/AcoustIdClient.js';
 import { CoverArtArchive } from './lookup/CoverArtArchive.js';
@@ -34,6 +38,7 @@ import { FilePicker } from './ui/FilePicker.js';
 import { Hotkeys } from './ui/Hotkeys.js';
 import { LibrarySheet } from './ui/LibrarySheet.js';
 import { ProgressBar } from './ui/ProgressBar.js';
+import { SearchSuggestions } from './ui/SearchSuggestions.js';
 import { SettingsSheet } from './ui/SettingsSheet.js';
 import { StatusLine } from './ui/StatusLine.js';
 import { Theme } from './ui/Theme.js';
@@ -89,6 +94,10 @@ settings.on('change', ({ key, value }) => {
     lookup.schedule(300);
 });
 
+// ── скачивание со своего сервера ───────────────────────────────
+const downloadServer = new DownloadServer({ settings, fallback: DOWNLOAD_SERVER });
+const downloads = new DownloadQueue({ server: downloadServer });
+
 // ── интерфейс ──────────────────────────────────────────────────
 const status = new StatusLine($('.status'));
 const scroller = new ShelfScroller({
@@ -113,7 +122,16 @@ const librarySheet = new LibrarySheet({
     dialog: $('#library-sheet'),
     library, tracks, settings, lookup, install, controller, acoustId,
 });
-const settingsSheet = new SettingsSheet({ dialog: $('#settings-sheet'), settings, player, platform, acoustId });
+const settingsSheet = new SettingsSheet({
+    dialog: $('#settings-sheet'), settings, player, platform, acoustId, downloads: downloadServer,
+});
+const suggestions = new SearchSuggestions({
+    root: $('.suggest'),
+    server: downloadServer,
+    downloads,
+    // то, что уже стоит на полке, скачать не предлагаем
+    isOnShelf: result => [...tracks.values()].some(track => sameSong(track, result)),
+});
 const spinner = new DiscSpinner({
     speed: () => controller.speed(),
     disc: () => shelf.discOf(controller.current),
@@ -169,11 +187,18 @@ local.on('pause', () => frames.start());
 local.on('emptied', () => spinner.release());
 
 shelf.on('activate', ({ id }) => controller.toggle(id));
+shelf.on('pending', ({ id }) => {
+    const item = downloads.get(id);
+    if (item) status.show(`${item.stage}: ${Math.round(item.progress * 100)}% — «${item.result.title}»`);
+});
 shelf.on('filter', ({ visible }) => { controller.setVisible(visible); syncDockCover(); });
 
 dock.on('toggle', () => controller.toggle(controller.current ?? shelf.focusedId()));
 dock.on('add', () => picker.open());
-dock.on('search', ({ query }) => shelf.filter(query));
+dock.on('search', ({ query }) => {
+    shelf.filter(query);
+    suggestions.setQuery(query, { localMatches: shelf.visibleIds().length });
+});
 dock.on('reveal', () => {
     const id = controller.current;
     if (!id) return;
@@ -192,6 +217,29 @@ librarySheet.on('remove', async ({ ids }) => {
     for (const id of ids) await library.remove(id);
 });
 librarySheet.on('clear', () => library.clear());
+
+// ── скачивание → полка ─────────────────────────────────────────
+// Заготовка встаёт на полку сразу и проявляется вместе с загрузкой;
+// скачанный файл ложится в библиотеку под тем же id и занимает её место,
+// а обложку и названия потом, как всегда, доводит поиск метаданных.
+suggestions.on('download', ({ result }) => downloads.start(result));
+suggestions.on('reveal', ({ id }) => { if (tracks.has(id)) shelf.follow(id); });
+downloads.on('added', ({ id, result }) => {
+    shelf.addPending(new PendingTrack(id, result));
+    empty.toggle(false);
+});
+downloads.on('progress', ({ id, progress }) => shelf.setPending(id, progress));
+downloads.on('done', async ({ id, file, result }) => {
+    const [record] = await library.import([{ file, id }]).catch(error => { console.error(error); return []; });
+    if (record) return;
+    shelf.dropPending(id);
+    status.show(`Не удалось сохранить «${result.title}» в приложении`);
+});
+downloads.on('failed', ({ id, result, message }) => {
+    shelf.dropPending(id);
+    status.show(`Не удалось скачать «${result.title}»: ${message}`);
+    empty.toggle(!tracks.size && !downloads.active);
+});
 
 lookup.on('found', ({ id }) => {
     const track = tracks.get(id);
@@ -308,6 +356,8 @@ const start = async () => {
     picker.attach();
     librarySheet.attach();
     settingsSheet.attach();
+    downloadServer.attach();
+    suggestions.attach();
     empty.setInstallHint(install.iosHint);
 
     let records = [];

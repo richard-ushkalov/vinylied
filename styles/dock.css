@@ -107,3 +107,70 @@
 .dock--search .dock__now,
 .dock--search [data-action="search"],
 .dock--search [data-action="add"] { display: none; }
+
+/* ── «Скачать из сети»: над панелью, пока открыт поиск ──────────
+   Абсолютом, чтобы не двигать панель и полку: список появляется
+   и исчезает поверх. Высота ограничена — найденное на полке
+   остаётся видно выше. */
+.suggest {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: calc(100% - 6px);
+
+    max-height: min(46svh, 380px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    display: grid;
+    gap: 2px;
+    padding: 6px 12px;
+
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: 0 -8px 24px var(--backdrop);
+}
+.suggest[hidden] { display: none; }
+
+.suggest__more {
+    min-height: var(--tap);
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    text-align: left;
+    font-size: 15px;
+    text-decoration: underline;
+    text-decoration-color: var(--line);
+    text-underline-offset: 4px;
+}
+.suggest__more[hidden] { display: none; }
+
+.suggest__note { font-size: 13px; line-height: 1.45; color: var(--muted); padding: 4px; }
+.suggest__note:empty { display: none; }
+
+.suggest__list { display: grid; padding: 0; list-style: none; }
+.suggest__list:empty { display: none; }
+
+.suggest__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+}
+.suggest__item:last-child { border-bottom: 0; }
+
+.suggest__cover {
+    width: 44px;
+    height: 44px;
+    flex: none;
+    object-fit: cover;
+    border-radius: 3px;
+    background: var(--surface-raised);
+}
+.suggest__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.suggest__title,
+.suggest__meta { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.suggest__title { font-size: 15px; }
+.suggest__meta { font-size: 13px; color: var(--muted); }
