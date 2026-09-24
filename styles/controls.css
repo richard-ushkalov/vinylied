@@ -1,0 +1,194 @@
+/* ── кнопки ───────────────────────────────────────────────────── */
+
+.icon-button {
+    width: var(--tap);
+    height: var(--tap);
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--fg);
+
+    transition: background-color var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) {
+    .icon-button:hover { border-color: var(--line-strong); }
+}
+/* нажатие — цвета меняются местами, как у палочки прогресса */
+.icon-button:active,
+.icon-button[aria-expanded="true"] {
+    background: var(--fg);
+    border-color: var(--fg);
+    color: var(--bg);
+}
+
+.icon-button--primary {
+    background: var(--fg);
+    border-color: var(--fg);
+    color: var(--bg);
+}
+.icon-button--primary svg { fill: currentColor; }
+.icon-button--primary:active { transform: scale(.94); }
+
+.icon-button--ghost { border-color: transparent; }
+.icon-button--ghost:active { background: transparent; border-color: var(--line); color: var(--fg); }
+
+.icon-button--small { --tap: 40px; }
+
+@media (pointer: coarse) {
+    :root { --tap: 48px; }
+    .icon-button--small { --tap: 44px; }
+}
+
+.pill-button {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 22px;
+
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    font-size: 15px;
+    letter-spacing: .01em;
+
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out);
+}
+.pill-button:active { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.pill-button--primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.pill-button--primary:active { background: transparent; color: var(--fg); }
+
+.text-button {
+    min-height: var(--tap);
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    font-size: 15px;
+    text-decoration: underline;
+    text-decoration-color: var(--line);
+    text-underline-offset: 4px;
+}
+.text-button--danger { color: var(--danger); text-decoration-color: currentColor; }
+
+/* ── поля настроек ─────────────────────────────────────────────── */
+
+.field { display: grid; gap: 6px; }
+.field--disabled { opacity: .45; }
+
+.field__label {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0;
+    font-size: 14px;
+}
+.field__value { color: var(--muted); font-variant-numeric: tabular-nums; }
+.field__hint { font-size: 12px; line-height: 1.4; color: var(--muted); }
+
+/* ползунок — та же линия в 1px и та же палочка, что у прогресса */
+.range {
+    --fill: 50%;
+    width: 100%;
+    height: 32px;
+    margin: 0;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    touch-action: pan-y;
+}
+.range::-webkit-slider-runnable-track {
+    height: 1px;
+    background: linear-gradient(to right, var(--fg) var(--fill), var(--line) var(--fill));
+}
+.range::-webkit-slider-thumb {
+    appearance: none;
+    width: 3px;
+    height: 20px;
+    margin-top: -9.5px;
+    border: 0;
+    border-radius: 1px;
+    background: var(--fg);
+}
+.range::-moz-range-track { height: 1px; background: var(--line); }
+.range::-moz-range-progress { height: 1px; background: var(--fg); }
+.range::-moz-range-thumb { width: 3px; height: 20px; border: 0; border-radius: 1px; background: var(--fg); }
+.range:focus-visible { outline-offset: 0; }
+
+/* переключатели из нескольких вариантов — радиогруппа в капсуле */
+.segmented {
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+}
+.segmented legend { width: 100%; margin-bottom: 6px; }
+.segmented label {
+    position: relative;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.segmented input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+    cursor: pointer;
+}
+.segmented label:has(:checked) { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.segmented label:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+/* выключатель */
+.switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: var(--tap);
+    font-size: 14px;
+    cursor: pointer;
+}
+.switch input {
+    position: relative;
+    flex: none;
+    width: 46px;
+    height: 26px;
+    margin: 0;
+    appearance: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.switch input::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--fg);
+    transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+.switch input:checked { background: var(--fg); border-color: var(--fg); }
+.switch input:checked::after { transform: translateX(20px); background: var(--bg); }
