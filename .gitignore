@@ -6,3 +6,7 @@ backup
 test-results
 playwright-report
 tests/fixtures/.generated
+__pycache__
+.venv
+.ruff_cache
+.mypy_cache
