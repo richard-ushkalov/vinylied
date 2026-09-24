@@ -4,6 +4,8 @@ const TIMEOUT = 20_000;
 // поиск и поиск звука для прослушивания ждут дольше: Spotify и YouTube не спешат
 const SLOW_TIMEOUT = 30_000;
 const FILE_TIMEOUT = 5 * 60_000;    // трек на медленном мобильном — это минуты, а не секунды
+// Сервер на Маке обновляют руками; запущенный старый не знает новых адресов
+const OUTDATED = 'Сервер на Маке старой версии — его нужно обновить';
 
 /**
  * @typedef {'spotify' | 'youtube'} Source
@@ -97,7 +99,11 @@ export class DownloadServer extends Emitter {
     async search(query, { source = 'spotify', signal } = {}) {
         const path = `/v1/search?q=${encodeURIComponent(query)}&source=${source}&limit=8`;
         const data = await this.#json(path, { signal, timeout: SLOW_TIMEOUT });
-        return Array.isArray(data?.results) ? data.results.map(item => ({ source, ...item })) : [];
+        const results = Array.isArray(data?.results) ? data.results : [];
+        // Сервер до 1.1 про источники не знает и на любой вкладке ищет в Spotify.
+        // Показать это как ролики YouTube — значит обмануть.
+        if (source !== 'spotify' && results.some(item => !item.source)) throw new DownloadError(OUTDATED, { code: 'outdated' });
+        return results.map(item => ({ source, ...item }));
     }
 
     /** @param {RemoteTrack} result @returns {Promise<Job>} */
@@ -112,9 +118,16 @@ export class DownloadServer extends Emitter {
      * @returns {Promise<string>}
      */
     async preview(result) {
-        const data = await this.#json('/v1/previews', {
-            method: 'POST', body: { source: result.source ?? 'spotify', id: result.id }, timeout: SLOW_TIMEOUT,
-        });
+        let data;
+        try {
+            data = await this.#json('/v1/previews', {
+                method: 'POST', body: { source: result.source ?? 'spotify', id: result.id }, timeout: SLOW_TIMEOUT,
+            });
+        } catch (error) {
+            // «нет такого адреса» — значит, прослушивания этот сервер ещё не умеет
+            if (error instanceof DownloadError && error.status === 404) throw new DownloadError(OUTDATED, { code: 'outdated' });
+            throw error;
+        }
         return new URL(data.url, this.url).href;
     }
 

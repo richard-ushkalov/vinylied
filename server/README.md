@@ -114,6 +114,18 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.vinilyed.server.plis
 Журнал — `tail -f ~/Library/Logs/vinilyed-server.log`. Выключить —
 `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.vinilyed.server.plist`.
 
+### Обновление
+
+```sh
+git -C ~/vinylied pull
+~/vinylied/server/setup.sh
+```
+
+`setup.sh` обновит spotDL и сам перезапустит сервер на автозапуске.
+Запущенный вручную (`serve`) остановите и запустите снова — иначе в
+памяти останется старый код. Какая версия сейчас работает, видно в
+ответе `/v1/health` (поле `version`).
+
 ## Доступ из интернета: туннель Cloudflare
 
 Туннель ведёт `https://dl.richard-ushkalov.com` прямо на сервер
@@ -211,6 +223,8 @@ HTTPS настоящий — работает и на iPhone.
   Обновите yt-dlp (`~/vinylied/server/.venv/bin/pip install -U yt-dlp`) и проверьте, что стоит `deno`.
 - **Приложение пишет «Код доступа не подошёл».** `codes` покажет, чьи коды
   есть; выдайте новый через `add-code`.
+- **«Сервер на Маке старой версии — его нужно обновить»** (или «Нет такого
+  адреса»): сервер не перезапускали после обновления — см. «Обновление».
 - **«Сервер долго не отвечает».** Spotify или YouTube думают дольше
   30 секунд. В окне `serve` (или в журнале) видно, сколько занял каждый
   запрос. Повторный поиск того же запроса отвечает сразу — из кеша.

@@ -284,3 +284,16 @@ test('предпрослушивание: ошибка сервера — сос
     assert.equal(detail.result.id, RESULT.id);
     assert.equal(player.current, null);
 });
+
+test('клиент: старый сервер на Маке — так и сказано, а не «нет такого адреса»', async () => {
+    const { server } = makeServer({
+        // сервер 1.0: источников не знает, прослушивания нет
+        '/v1/search': json({ results: [RESULT] }),
+        '/v1/previews': json({ error: 'not_found', message: 'Нет такого адреса' }, 404),
+    });
+    const outdated = { code: 'outdated', message: 'Сервер на Маке старой версии — его нужно обновить' };
+    await assert.rejects(server.search('кино', { source: 'youtube' }), outdated);
+    await assert.rejects(server.preview({ ...RESULT, source: 'spotify' }), outdated);
+    // Spotify старый сервер умеет — там всё как раньше
+    assert.equal((await server.search('кино'))[0].source, 'spotify');
+});

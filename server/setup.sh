@@ -60,11 +60,24 @@ EOF
 chmod +x "$BIN"
 echo "Готово: $BIN"
 
+# Обновлённый код подхватывается только при запуске: запущенный сервер
+# держит в памяти старый. Автозапуск перезапускаем сами.
+AGENT="com.vinilyed.server"
+if launchctl print "gui/$(id -u)/$AGENT" >/dev/null 2>&1; then
+    launchctl kickstart -k "gui/$(id -u)/$AGENT"
+    echo "Сервер на автозапуске перезапущен — уже с новым кодом."
+elif pgrep -f "vinilyed_server.* serve" >/dev/null 2>&1; then
+    echo "Сервер запущен вручную: остановите его (Ctrl+C) и запустите снова — vinilyed-server serve."
+fi
+
 say "Дальше"
 cat <<'EOF'
   vinilyed-server add-code family              выдать код (покажется один раз)
   vinilyed-server check "Кино Группа крови"    проверить поиск и скачивание
+  vinilyed-server serve                        запустить сервер (Ctrl+C — остановить)
   vinilyed-server install-agent                автозапуск сервера при входе в систему
+
+Обновиться потом: git -C ~/vinylied pull && ~/vinylied/server/setup.sh
 
 Туннель Cloudflare на dl.richard-ushkalov.com — в server/README.md.
 EOF
