@@ -1,0 +1,220 @@
+/* ── конверт: шесть граней ────────────────────────────────────── */
+
+.vinyl {
+    user-select: none;
+
+    width: var(--vinyl-size);
+    height: var(--vinyl-thickness);
+
+    position: relative;
+
+    transform-style: preserve-3d;
+    transition: transform var(--dur-base) var(--ease-out);
+}
+
+/* общее для всех граней. preserve-3d нужен WebKit:
+   без него грань рисуется плоской картинкой, без перспективы */
+.vinyl__box > * {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+
+    transform-style: preserve-3d;
+    transition: opacity 520ms var(--ease-out);
+}
+
+.vinyl__frontside,
+.vinyl__backside {
+    width: var(--vinyl-size);
+    aspect-ratio: 1;
+    object-fit: cover;
+    background: var(--edge);
+}
+
+.vinyl__frontside {
+    transform: translate(-50%, -50%)
+               rotateX(90deg)
+               translateZ(var(--vinyl-half-thickness));
+}
+
+.vinyl__backside {
+    transform: translate(-50%, -50%)
+               rotateX(-90deg)
+               translateZ(var(--vinyl-half-thickness));
+}
+
+.vinyl__side {
+    width: var(--vinyl-size);
+    height: var(--vinyl-thickness);
+    /* без этого флекс-детей нельзя ужать меньше их содержимого */
+    min-width: 0;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: calc(var(--vinyl-thickness) * 0.8);
+    padding-inline: calc(var(--vinyl-thickness) * 0.6);
+
+    /* Подпись привязана к ТОЛЩИНЕ корешка, а не к размеру страницы:
+       корешок тонкий по определению, и текст в 16px вылезал из него. */
+    font-size: calc(var(--vinyl-thickness) * 0.78);
+    line-height: 1;
+
+    transform: translate(-50%, -50%)
+               translateZ(calc(var(--vinyl-size) / 2));
+
+    /* цвет приходит из обложки; откат — нейтральный из темы */
+    background: var(--spine, var(--spine-fallback));
+    color: var(--spine-text, var(--spine-text-fallback));
+}
+
+.vinyl__side__album,
+.vinyl__side__title {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.vinyl__side__album { font-weight: var(--font-weight-bold); flex: 0 1 auto; }
+.vinyl__side__title { font-style: italic; font-weight: var(--font-weight-light); flex: 1 1 auto; }
+
+/* ── коробка целиком ─────────────────────────────────────────── */
+.vinyl__box {
+    position: absolute;
+    inset: 0;
+
+    /* нулевая трансформация не бесполезна: она удерживает элемент
+       полноценным участником 3D-контекста. Без неё грани появлялись
+       только после того, как translateX им его возвращал. */
+    transform: translateX(0);
+
+    transform-style: preserve-3d;
+    transition: transform var(--dur-base) var(--ease-out);
+}
+
+/* Текущий — конверт отъезжает вбок и открывает пластинку.
+   0.72, а не «полностью»: при 0.92 правый край конверта оказывался
+   в 1.42 ширины обложки от центра — на телефоне конверт уезжал за экран.
+   Меньше 0.67 тоже нельзя: конверт начинает закрывать этикетку,
+   а по этикетке и читается вращение. */
+.slot--current .vinyl__box {
+    transform: translateX(calc(var(--vinyl-size) * 0.72));
+}
+
+/* три недостающих ребра: дальнее и два боковых */
+.vinyl__edge {
+    background: var(--edge);
+    transform-style: preserve-3d;
+}
+
+.vinyl__edge--far {
+    width: var(--vinyl-size);
+    height: var(--vinyl-thickness);
+    transform: translate(-50%, -50%)
+               rotateY(180deg)
+               translateZ(calc(var(--vinyl-size) / 2));
+}
+
+.vinyl__edge--left,
+.vinyl__edge--right {
+    width: var(--vinyl-size);          /* по глубине коробки */
+    height: var(--vinyl-thickness);
+}
+.vinyl__edge--left {
+    transform: translate(-50%, -50%)
+               rotateY(-90deg)
+               translateZ(calc(var(--vinyl-size) / 2));
+}
+.vinyl__edge--right {
+    transform: translate(-50%, -50%)
+               rotateY(90deg)
+               translateZ(calc(var(--vinyl-size) / 2));
+}
+
+/* ── пластинка ─────────────────────────────────────────────── */
+.disc {
+    --disc-size: calc(var(--vinyl-size) * 0.94);
+
+    /* Пластинку рисуем ТОЛЬКО у текущего трека и у прежнего, пока он
+       доигрывает уход. У остальных её нет в отрисовке вообще: браузер
+       не декодирует этикетку на каждом конверте полки. */
+    display: none;
+
+    /* Пока конверт закрыт, пластинка внутри — значит её не видно.
+       visibility, а не opacity: opacity меньше единицы принудительно
+       делает transform-style: flat и убило бы 3D у диска. */
+    visibility: hidden;
+    transition: visibility 0s var(--dur-base);
+
+    width: var(--disc-size);
+    height: var(--disc-size);
+
+    position: absolute;
+    left: 50%;
+    top: 50%;
+
+    border-radius: 50%;
+
+    /* лежит в той же плоскости, что и обложка, чуть ниже неё по толщине;
+       rotateZ в конце — то есть уже в плоскости лежащей пластинки */
+    transform: translate(-50%, -50%)
+               rotateX(90deg)
+               translateZ(calc(var(--vinyl-half-thickness) * -0.2))
+               rotateZ(var(--disc-spin, 0deg));
+
+    /* Сплошной чёрный, тонкая обводка — как палочка прогресса. */
+    background: var(--disc);
+    border: 1px solid var(--disc-line);
+
+    transform-style: preserve-3d;
+}
+
+.slot--current .disc,
+.slot--recent .disc { display: block; }
+
+/* Пластинку показываем сразу, а прячем — только когда конверт доехал,
+   то есть при СМЕНЕ трека; на паузе она так и остаётся снаружи.
+
+   visibility: visible у потомка перебивает hidden родителя. Раньше это
+   правило не знало ни про поиск, ни про отсечение за экраном — и диск
+   играющего трека висел поверх полки, даже когда сам слот был скрыт:
+   не уходил при поиске и торчал «квадратиком в углу». Теперь такие
+   состояния исключены явно. */
+.slot--current:not(.slot--gone, .slot--hidden, .slot--culled) .disc {
+    visibility: visible;
+    transition: visibility 0s;
+}
+
+/* этикетка по центру и отверстие */
+.disc__label {
+    width: 34%;
+    height: 34%;
+
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+
+    border-radius: 50%;
+    background: var(--disc-art, var(--label-fallback)) center / cover;
+
+    /* по этикетке и читается вращение: у сплошного диска
+       других подвижных деталей нет */
+    box-shadow: 0 0 0 1px var(--label-line);
+}
+.disc__label::after {
+    content: '';
+
+    width: 9%;
+    height: 9%;
+
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+
+    border-radius: 50%;
+    background: var(--disc);
+    box-shadow: 0 0 0 1px var(--label-line);
+}

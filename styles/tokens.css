@@ -1,0 +1,108 @@
+/* ── токены ───────────────────────────────────────────────────
+   Все цвета интерфейса — только отсюда. Жёстко заданных #fff/#000
+   в остальных файлах нет: светлая тема подменяет их целиком.     */
+
+:root {
+    color-scheme: dark;
+
+    --bg: #000;
+    --fg: #fff;
+    --muted: rgb(255 255 255 / .62);
+    --faint: rgb(255 255 255 / .35);
+    --line: rgb(255 255 255 / .35);
+    --line-strong: rgb(255 255 255 / .75);
+    --surface: #0b0b0b;
+    --surface-raised: #151515;
+    --backdrop: rgb(0 0 0 / .6);
+    --danger: #ff7a6e;
+    --focus: #fff;
+
+    /* конверт и пластинка */
+    --edge: #1e1e1e;
+    --spine-fallback: #2a2a2a;
+    --spine-text-fallback: #fff;
+    --disc: #000;
+    --disc-line: #fff;
+    --label-line: rgb(255 255 255 / .35);
+    --label-fallback: #222;
+
+    /* запасная обложка (читается из JS при смене темы) */
+    --cover-bg: #000;
+    --cover-fg: #fff;
+
+    --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+            Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    --font-weight-light: 300;
+    --font-weight-bold: 600;
+
+    --radius-pill: 999px;
+    --radius-sheet: 20px;
+    --tap: 44px;                 /* минимальная зона нажатия */
+
+    --dur-fast: 160ms;
+    --dur-base: 400ms;
+    --dur-slow: 620ms;
+    --ease-out: cubic-bezier(.2, .7, .3, 1);
+    --ease-dive: cubic-bezier(.32, 0, .24, 1);
+
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+
+    /* Растёт со сценой, но не больше того, что влезает в ширину:
+       текущий конверт отъезжает вбок, и паре «пластинка + конверт»
+       нужно примерно 1.7 ширины обложки. Нижняя граница — чтобы
+       на телефоне корешок не превратился в нитку. */
+    --vinyl-size: clamp(170px, min(52cqmin, 56cqw), 430px);
+    --perspective: 1000px;
+}
+
+:root[data-size="s"] { --vinyl-size: clamp(130px, min(40cqmin, 46cqw), 320px); }
+:root[data-size="l"] { --vinyl-size: clamp(190px, min(62cqmin, 58cqw), 520px); }
+
+:root[data-theme="light"] {
+    color-scheme: light;
+
+    --bg: #f6f5f2;
+    --fg: #0b0b0b;
+    --muted: rgb(11 11 11 / .62);
+    --faint: rgb(11 11 11 / .38);
+    --line: rgb(11 11 11 / .3);
+    --line-strong: rgb(11 11 11 / .75);
+    --surface: #fff;
+    --surface-raised: #efeee9;
+    --backdrop: rgb(20 20 20 / .32);
+    --danger: #c0392b;
+    --focus: #0b0b0b;
+
+    --edge: #dcdbd6;
+    --spine-fallback: #e4e3de;
+    --spine-text-fallback: #111;
+    /* Пластинка остаётся чёрной — это вещь, а не интерфейс. Обводка ей
+       в светлой теме не нужна: чёрный круг на светлом виден и так. */
+    --disc: #0b0b0b;
+    --disc-line: #0b0b0b;
+    --label-line: rgb(255 255 255 / .3);
+    --label-fallback: #2a2a2a;
+
+    --cover-bg: #f6f5f2;
+    --cover-fg: #0b0b0b;
+}
+
+/* Повышенная контрастность: линии плотнее, приглушённое — полноцветное */
+@media (prefers-contrast: more) {
+    :root {
+        --line: var(--line-strong);
+        --muted: var(--fg);
+        --faint: var(--line-strong);
+    }
+}
+
+/* Меньше движения — все переходы мгновенные. Отдельные правила ниже
+   гасят то, что длительностями не выразить (вращение, ныряние). */
+:root[data-motion="reduce"] {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+}

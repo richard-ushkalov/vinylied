@@ -1,44 +1,228 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru" data-theme="dark" data-motion="full" data-size="m">
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-        <title>Vinilyed — Responsive Music Player</title>
+        <title>Vinilyed</title>
+        <meta name="description" content="Полка с виниловыми пластинками для вашей музыки. Работает без интернета.">
+        <meta name="color-scheme" content="dark light">
+        <meta name="theme-color" content="#000000">
 
-        <script type="importmap">
-            { "imports": { "music-metadata": "https://esm.sh/music-metadata@11" } }
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Vinilyed">
+
+        <link rel="manifest" href="manifest.webmanifest">
+        <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+        <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+        <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+        <script>
+            // Тема, движение и размер — ДО первой отрисовки: иначе светлая
+            // тема на миг мигала бы чёрным. Та же логика, что в Settings/Theme,
+            // но без модулей: модульный скрипт выполняется уже после разбора.
+            (() => {
+                const root = document.documentElement;
+                let saved = {};
+                try {
+                    const raw = JSON.parse(localStorage.getItem('vinilyed:settings'));
+                    if (raw && raw.v === 1) saved = raw.values || {};
+                } catch { /* нет доступа к хранилищу — берём системные */ }
+                const media = query => matchMedia(query).matches;
+                const theme = saved.theme === 'light' || saved.theme === 'dark'
+                    ? saved.theme : media('(prefers-color-scheme: light)') ? 'light' : 'dark';
+                const motion = saved.motion === 'reduce' || saved.motion === 'full'
+                    ? saved.motion : media('(prefers-reduced-motion: reduce)') ? 'reduce' : 'full';
+                root.dataset.theme = theme;
+                root.dataset.motion = motion;
+                root.dataset.size = ['s', 'm', 'l'].includes(saved.vinylSize) ? saved.vinylSize : 'm';
+                document.querySelector('meta[name="theme-color"]')
+                    ?.setAttribute('content', theme === 'light' ? '#f6f5f2' : '#000000');
+            })();
         </script>
 
-        <link rel="stylesheet" href="style.css">
-        <script src="app.js" type="module"></script>
+        <link rel="stylesheet" href="styles/tokens.css">
+        <link rel="stylesheet" href="styles/base.css">
+        <link rel="stylesheet" href="styles/layout.css">
+        <link rel="stylesheet" href="styles/shelf.css">
+        <link rel="stylesheet" href="styles/vinyl.css">
+        <link rel="stylesheet" href="styles/dock.css">
+        <link rel="stylesheet" href="styles/progress.css">
+        <link rel="stylesheet" href="styles/controls.css">
+        <link rel="stylesheet" href="styles/sheet.css">
+
+        <script type="module" src="src/main.js"></script>
     </head>
     <body>
-        <div class="layout">
-            <div class="bar">
-                <label class="file-button">
-                    <span>Выбрать музыку</span>
-                    <input class="input" type="file" accept="audio/*" multiple>
-                </label>
-                <input class="search" type="search" autocomplete="off"
-                       placeholder="Поиск по трекам и альбомам" aria-label="Поиск по полке">
-            </div>
-            <div class="main">
-                <div class="scene">
-                    <ul class="list"></ul>
-                </div>
-            </div>
+        <!-- иконки: один спрайт, штрих 1.5px в цвет текста -->
+        <svg class="sprite" aria-hidden="true" focusable="false">
+            <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+            <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8.5 5.5v13M15.5 5.5v13"/></symbol>
+            <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
+            <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+            <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r=".9"/><circle cx="12" cy="12" r=".9"/><circle cx="18.5" cy="12" r=".9"/></symbol>
+            <symbol id="i-close" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
+            <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/></symbol>
+        </svg>
 
-            <div class="progress" role="slider" tabindex="0"
-                 aria-label="Позиция в треке"
-                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="app">
+            <header class="topbar">
+                <h1 class="wordmark"><span aria-hidden="true">vinilyed</span><span class="visually-hidden">Vinilyed — полка с пластинками</span></h1>
+                <button class="icon-button icon-button--ghost" type="button" data-action="menu"
+                        aria-haspopup="dialog" aria-controls="library-sheet" aria-label="Полка и настройки">
+                    <svg aria-hidden="true"><use href="#i-more"/></svg>
+                </button>
+            </header>
+
+            <main class="main">
+                <div class="scene">
+                    <ul class="list" role="listbox" tabindex="0" aria-label="Полка с пластинками"
+                        aria-describedby="shelf-hint"></ul>
+                </div>
+                <p id="shelf-hint" class="visually-hidden">
+                    Стрелки вверх и вниз выбирают пластинку, Enter включает или ставит на паузу.
+                </p>
+
+                <section class="empty" aria-labelledby="empty-title" hidden>
+                    <svg class="empty__disc" viewBox="0 0 120 120" aria-hidden="true">
+                        <circle cx="60" cy="60" r="56"/>
+                        <circle cx="60" cy="60" r="18"/>
+                        <circle cx="60" cy="60" r="2.5"/>
+                    </svg>
+                    <h2 id="empty-title" class="empty__title">Полка пока пустая</h2>
+                    <button class="pill-button pill-button--primary" type="button" data-action="add">
+                        <svg aria-hidden="true"><use href="#i-plus"/></svg>
+                        <span>Добавить музыку</span>
+                    </button>
+                    <p class="empty__hint">Музыка сохранится в приложении и будет играть без интернета</p>
+                    <p class="empty__install" hidden>
+                        Сначала добавьте Vinilyed на экран «Домой»: «Поделиться» → «На экран “Домой”».
+                        В обычном Safari iOS стирает данные сайтов, которые не открывали неделю.
+                    </p>
+                </section>
+
+                <div class="dropzone" aria-hidden="true"><span>Отпустите, чтобы добавить на полку</span></div>
+            </main>
+
+            <p class="status" role="status" aria-live="polite"></p>
+
+            <section class="dock" aria-label="Плеер">
+                <button class="dock__cover" type="button" data-action="reveal" aria-label="Показать играющую пластинку" tabindex="-1">
+                    <img alt="" decoding="async">
+                </button>
+                <button class="dock__now" type="button" data-action="reveal">
+                    <span class="dock__title">Выберите пластинку</span>
+                    <span class="dock__meta"></span>
+                </button>
+                <form class="search" role="search" hidden>
+                    <svg class="search__icon" aria-hidden="true"><use href="#i-search"/></svg>
+                    <input class="search__input" type="search" name="q" autocomplete="off" spellcheck="false"
+                           enterkeyhint="search" placeholder="Поиск по полке" aria-label="Поиск по полке">
+                    <button class="icon-button icon-button--small icon-button--ghost" type="button"
+                            data-action="search-close" aria-label="Закрыть поиск">
+                        <svg aria-hidden="true"><use href="#i-close"/></svg>
+                    </button>
+                </form>
+                <div class="dock__actions">
+                    <button class="icon-button icon-button--primary" type="button" data-action="play" aria-label="Играть">
+                        <svg aria-hidden="true"><use href="#i-play"/></svg>
+                    </button>
+                    <button class="icon-button" type="button" data-action="search" aria-label="Поиск по полке" aria-expanded="false">
+                        <svg aria-hidden="true"><use href="#i-search"/></svg>
+                    </button>
+                    <button class="icon-button" type="button" data-action="add" aria-label="Добавить музыку">
+                        <svg aria-hidden="true"><use href="#i-plus"/></svg>
+                    </button>
+                </div>
+            </section>
+
+            <div class="progress" role="slider" tabindex="0" aria-label="Позиция в треке"
+                 aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="0:00">
+                <div class="progress__track"></div>
                 <div class="progress__fill"></div>
                 <div class="progress__handle"></div>
+                <span class="progress__time progress__time--elapsed" aria-hidden="true"></span>
+                <span class="progress__time progress__time--total" aria-hidden="true"></span>
+                <span class="progress__bubble" aria-hidden="true"></span>
             </div>
         </div>
 
+        <dialog class="sheet" id="library-sheet" aria-labelledby="library-title">
+            <div class="sheet__panel">
+                <header class="sheet__header">
+                    <h2 id="library-title" class="sheet__title">Полка</h2>
+                    <button class="icon-button icon-button--small icon-button--ghost" type="button" data-action="close" aria-label="Закрыть">
+                        <svg aria-hidden="true"><use href="#i-close"/></svg>
+                    </button>
+                </header>
+                <div class="sheet__body">
+                    <p class="sheet__stats" data-bind="stats"></p>
+                    <div class="sheet__row">
+                        <button class="pill-button pill-button--primary" type="button" data-action="add">
+                            <svg aria-hidden="true"><use href="#i-plus"/></svg><span>Добавить музыку</span>
+                        </button>
+                        <button class="pill-button" type="button" data-action="install" hidden>Установить на телефон</button>
+                    </div>
+                    <p class="sheet__note" data-bind="ios-install" hidden>
+                        Чтобы установить на iPhone: «Поделиться» → «На экран “Домой”».
+                        Музыку лучше добавлять уже в установленном приложении — у него своё хранилище,
+                        и iOS не сотрёт его через неделю.
+                    </p>
+
+                    <div class="sheet__group">
+                        <fieldset class="segmented" data-setting="order">
+                            <legend class="field__label">Порядок</legend>
+                            <label><input type="radio" name="order" value="sequential"><span>По очереди</span></label>
+                            <label><input type="radio" name="order" value="shuffle"><span>Перемешать</span></label>
+                        </fieldset>
+                        <fieldset class="segmented" data-setting="repeat">
+                            <legend class="field__label">Повтор</legend>
+                            <label><input type="radio" name="repeat" value="all"><span>Полки</span></label>
+                            <label><input type="radio" name="repeat" value="one"><span>Трека</span></label>
+                            <label><input type="radio" name="repeat" value="off"><span>Выкл.</span></label>
+                        </fieldset>
+                    </div>
+
+                    <section class="sheet__section" aria-labelledby="covers-title">
+                        <h3 id="covers-title" class="sheet__subtitle">Обложки и названия</h3>
+                        <p class="sheet__note" data-bind="lookup"></p>
+                        <button class="text-button" type="button" data-action="recheck">Проверить заново</button>
+                    </section>
+
+                    <section class="sheet__section" aria-labelledby="tracks-title">
+                        <h3 id="tracks-title" class="sheet__subtitle">Треки</h3>
+                        <ul class="track-list" data-bind="tracks"></ul>
+                    </section>
+                </div>
+                <footer class="sheet__footer">
+                    <button class="text-button" type="button" data-action="settings">Настройки</button>
+                    <button class="text-button text-button--danger" type="button" data-action="clear">Очистить полку</button>
+                </footer>
+            </div>
+        </dialog>
+
+        <dialog class="sheet" id="settings-sheet" aria-labelledby="settings-title">
+            <div class="sheet__panel">
+                <header class="sheet__header">
+                    <h2 id="settings-title" class="sheet__title">Настройки</h2>
+                    <button class="icon-button icon-button--small icon-button--ghost" type="button" data-action="close" aria-label="Закрыть">
+                        <svg aria-hidden="true"><use href="#i-close"/></svg>
+                    </button>
+                </header>
+                <form class="sheet__body settings" data-bind="form"></form>
+                <footer class="sheet__footer">
+                    <button class="text-button" type="button" data-action="reset">Сбросить настройки</button>
+                </footer>
+            </div>
+        </dialog>
+
+        <input class="file-input" type="file" multiple hidden
+               accept="audio/*,.mp3,.m4a,.aac,.flac,.ogg,.oga,.opus,.wav,.aif,.aiff,.webm">
+
         <template id="vinyl-template">
-            <li class="slot">
+            <li class="slot" role="option" aria-selected="false">
                 <div class="vinyl">
                     <!-- пластинка лежит ВНУТРИ конверта и остаётся на месте -->
                     <div class="disc">
@@ -47,8 +231,8 @@
 
                     <!-- конверт: шесть граней, при игре отъезжает вбок -->
                     <div class="vinyl__box">
-                        <img src="" alt="" class="vinyl__frontside">
-                        <img src="" alt="" class="vinyl__backside">
+                        <img src="" alt="" class="vinyl__frontside" decoding="async">
+                        <img src="" alt="" class="vinyl__backside" decoding="async">
                         <div class="vinyl__side">
                             <p class="vinyl__side__album"></p>
                             <p class="vinyl__side__title"></p>
@@ -60,6 +244,5 @@
                 </div>
             </li>
         </template>
-
     </body>
 </html>

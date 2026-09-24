@@ -1,0 +1,112 @@
+/* ── полоса прогресса ─────────────────────────────────────────────
+   В покое — та же тонкая линия внизу экрана. Но зона захвата 40px
+   и заходит на нижний отступ панели: в линию 1px пальцем не попасть,
+   а у самого края телефона ещё и системный жест «домой». */
+
+.progress {
+    --progress-line: 1px;
+    --x: 0%;
+
+    position: relative;
+    z-index: 20;
+
+    height: 40px;
+    margin-top: -18px;
+
+    cursor: pointer;
+    touch-action: none;          /* иначе браузер заберёт жест себе */
+    user-select: none;
+}
+
+.progress__track,
+.progress__fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--progress-line);
+    transition: height var(--dur-fast) var(--ease-out);
+}
+.progress__track { background: var(--faint); }
+
+.progress__fill {
+    background: var(--fg);
+    /* масштабируем, а не меняем ширину: transform не трогает раскладку */
+    transform-origin: left center;
+    transform: scaleX(0);
+}
+
+.progress__handle {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    height: 7px;
+
+    background: var(--fg);
+    translate: -50% 0;
+    pointer-events: none;        /* тащим саму полосу, палочка не мешает попаданию */
+    transition: height var(--dur-fast) var(--ease-out), width var(--dur-fast) var(--ease-out);
+}
+
+.progress__time,
+.progress__bubble {
+    position: absolute;
+    bottom: 10px;
+    font-size: 11px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease-out);
+}
+.progress__time { color: var(--muted); }
+.progress__time--elapsed { left: 12px; }
+.progress__time--total { right: 12px; }
+
+/* пузырь со временем над пальцем */
+.progress__bubble {
+    left: var(--x);
+    bottom: 26px;
+    padding: 5px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--fg);
+    color: var(--bg);
+    font-size: 12px;
+    translate: -50% 0;
+}
+
+/* касание: линия толще, палочка выше, видно время */
+.progress--active { --progress-line: 3px; }
+.progress--active .progress__handle { width: 2px; height: 18px; }
+.progress--active .progress__time,
+.progress--active .progress__bubble,
+.progress:focus-visible .progress__time { opacity: 1; }
+
+@media (hover: hover) {
+    .progress:hover { --progress-line: 3px; }
+    .progress:hover .progress__time,
+    .progress:hover .progress__bubble { opacity: 1; }
+}
+
+.progress:focus-visible { outline: none; }
+.progress:focus-visible .progress__track { outline: 2px solid var(--focus); outline-offset: 4px; }
+
+/* разовый переход при смене трека — в обычном режиме его нет,
+   иначе он сглаживал бы покадровые обновления и полоса отставала бы */
+.progress--rewind .progress__fill { transition: transform 560ms cubic-bezier(.22, .9, .25, 1); }
+.progress--rewind .progress__handle { transition: left 560ms cubic-bezier(.22, .9, .25, 1); }
+
+/* Смена трека: палочка не отматывается назад, а уходит за правый край,
+   телепортируется за левый и выезжает оттуда. */
+.progress--wrap .progress__handle,
+.progress--wrap .progress__fill {
+    transition: left 300ms cubic-bezier(.55, 0, .45, 1),
+                transform 300ms cubic-bezier(.55, 0, .45, 1);
+}
+
+:root[data-motion="reduce"] .progress--rewind .progress__fill,
+:root[data-motion="reduce"] .progress--rewind .progress__handle,
+:root[data-motion="reduce"] .progress--wrap .progress__fill,
+:root[data-motion="reduce"] .progress--wrap .progress__handle { transition: none; }

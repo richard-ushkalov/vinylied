@@ -1,0 +1,109 @@
+/* ── нижняя панель: сейчас играет, кнопки, поиск ─────────────── */
+
+.dock {
+    position: relative;
+    z-index: 15;
+
+    width: 100%;
+    max-width: 720px;
+    margin-inline: auto;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* снизу запас: сюда заходит зона захвата прогресса */
+    padding: 6px 12px 18px;
+}
+
+/* Мини-обложка играющего трека. Уезжает «квадратиком в угол», когда
+   сам конверт ушёл из кадра или скрыт поиском; тап — вернуться к нему.
+   Отрицательный отступ схлопывает её место, пока она спрятана. */
+.dock__cover {
+    width: var(--tap);
+    height: var(--tap);
+    flex: none;
+    margin-right: calc(-1 * var(--tap) - 10px);
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface-raised);
+
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-12px, 8px) scale(.6);
+    transition: margin-right var(--dur-base) var(--ease-out),
+                opacity var(--dur-base) var(--ease-out),
+                transform var(--dur-base) var(--ease-out),
+                visibility 0s linear var(--dur-base);
+}
+.dock__cover img { width: 100%; height: 100%; object-fit: cover; }
+
+.dock--cover .dock__cover {
+    margin-right: 0;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition-delay: 0s;
+}
+
+.dock__now {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+    padding: 4px 0;
+
+    border: 0;
+    background: none;
+    text-align: left;
+}
+.dock__title,
+.dock__meta {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.dock__title { font-size: 15px; font-weight: 500; }
+.dock__meta { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.dock--idle .dock__title { color: var(--muted); font-weight: 400; }
+
+.dock__actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* ── поиск: встаёт на место подписи ───────────────────────────── */
+.search {
+    flex: 1;
+    min-width: 0;
+    height: var(--tap);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 2px 0 14px;
+
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+}
+.search:focus-within { border-color: var(--line-strong); }
+.search__icon { width: 18px; height: 18px; color: var(--muted); }
+
+.search__input {
+    flex: 1;
+    width: 0;          /* у input есть «родная» ширина — она ломала раскладку */
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    outline: none;
+    /* 16px, не меньше: иначе iOS приближает страницу при фокусе */
+    font-size: 16px;
+}
+.search__input::placeholder { color: var(--faint); }
+.search__input::-webkit-search-cancel-button { display: none; }
+
+.dock--search .dock__now,
+.dock--search [data-action="search"],
+.dock--search [data-action="add"] { display: none; }

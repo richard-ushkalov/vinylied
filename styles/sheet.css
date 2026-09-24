@@ -1,0 +1,173 @@
+/* ── листы: «Полка» и «Настройки» ─────────────────────────────────
+   Нативный <dialog> с showModal(): фокус заперт внутри, Esc закрывает,
+   после закрытия фокус возвращается туда, откуда открыли.            */
+
+.sheet {
+    width: min(560px, 100%);
+    max-width: 100%;
+    max-height: min(88svh, 780px);
+    margin: auto auto 0;
+    padding: 0;
+
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    background: var(--surface);
+    color: var(--fg);
+
+    overflow: hidden;
+    overscroll-behavior: contain;
+
+    transition: translate var(--dur-base) var(--ease-out),
+                display var(--dur-base) allow-discrete,
+                overlay var(--dur-base) allow-discrete;
+    translate: 0 100%;
+}
+.sheet[open] { translate: 0 0; }
+@starting-style {
+    .sheet[open] { translate: 0 100%; }
+}
+
+.sheet::backdrop {
+    background: var(--backdrop);
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-out),
+                display var(--dur-base) allow-discrete,
+                overlay var(--dur-base) allow-discrete;
+}
+.sheet[open]::backdrop { opacity: 1; }
+@starting-style {
+    .sheet[open]::backdrop { opacity: 0; }
+}
+
+/* на широком экране — обычное окно по центру */
+@media (min-width: 720px) and (min-height: 560px) {
+    .sheet {
+        margin: auto;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sheet);
+        translate: 0 24px;
+        opacity: 0;
+        transition: translate var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out),
+                    display var(--dur-base) allow-discrete, overlay var(--dur-base) allow-discrete;
+    }
+    .sheet[open] { translate: 0 0; opacity: 1; }
+    @starting-style {
+        .sheet[open] { translate: 0 24px; opacity: 0; }
+    }
+}
+
+.sheet__panel {
+    max-height: inherit;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--safe-bottom);
+}
+
+.sheet__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 12px 4px 20px;
+}
+.sheet__title { font-size: 18px; font-weight: 500; }
+
+.sheet__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: grid;
+    align-content: start;
+    gap: 22px;
+    padding: 8px 20px 20px;
+}
+
+.sheet__footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 16px 10px;
+    border-top: 1px solid var(--line);
+}
+
+.sheet__stats { font-size: 14px; color: var(--muted); }
+.sheet__row { display: flex; flex-wrap: wrap; gap: 10px; }
+.sheet__group { display: grid; gap: 16px; }
+.sheet__section { display: grid; gap: 8px; justify-items: start; }
+.sheet__subtitle {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.sheet__note { font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+/* ── список треков ─────────────────────────────────────────────── */
+.track-list {
+    width: 100%;
+    padding: 0;
+    list-style: none;
+}
+.track-list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+}
+.track-list img {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    object-fit: cover;
+    border-radius: 3px;
+    background: var(--surface-raised);
+}
+.track-list__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.track-list__title,
+.track-list__meta {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.track-list__title { font-size: 14px; }
+.track-list__meta { font-size: 12px; color: var(--muted); }
+.track-list__playing .track-list__title { font-weight: 600; }
+.track-list__empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
+
+/* ── настройки ─────────────────────────────────────────────────── */
+.settings .settings__section {
+    display: grid;
+    gap: 14px;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+
+/* справка по клавишам — только там, где есть клавиатура */
+@media (hover: none) and (pointer: coarse) {
+    .settings [data-section="keys"] { display: none; }
+}
+.settings__section > legend { margin-bottom: 4px; }
+
+.keys {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    font-size: 13px;
+}
+.keys dt { white-space: nowrap; }
+.keys dd { margin: 0; color: var(--muted); }
+kbd {
+    display: inline-block;
+    min-width: 1.8em;
+    padding: 2px 6px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    font: inherit;
+    font-size: 12px;
+    text-align: center;
+}

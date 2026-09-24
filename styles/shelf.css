@@ -1,0 +1,121 @@
+/* ── полка ─────────────────────────────────────────────────────── */
+
+.list {
+    /* offsetParent для слотов: scroll.js меряет их offsetTop от списка */
+    position: relative;
+    list-style-type: none;
+    padding: 0;
+
+    display: flex;
+    flex-direction: column;
+
+    transform-style: preserve-3d;
+}
+
+.list:focus-visible { outline: none; }
+.list:focus-visible .slot--focused .vinyl__side {
+    outline: 2px solid var(--focus);
+    outline-offset: 4px;
+}
+
+/* ── слот: место в стопке ─────────────────────────────────────── */
+.slot {
+    --vinyl-thickness: calc(var(--vinyl-size) / 20);
+    --vinyl-half-thickness: calc(var(--vinyl-thickness) / 2);
+
+    user-select: none;
+    -webkit-user-select: none;
+
+    height: calc(var(--vinyl-thickness) * 3);
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    padding-block: calc(var(--vinyl-size) / 7);
+
+    transform-style: preserve-3d;
+
+    transition: padding-block var(--dur-base) var(--ease-out);
+}
+
+/* Текущий трек — и когда играет, и когда на паузе. Вид один и тот же,
+   меняется только вращение диска: закрывать конверт обратно незачем,
+   иначе по стопке не понять, какой трек сейчас выбран.
+   Отступы больше обычных, потому что конверт ВСТАЁТ вертикально
+   (rotateX(-90deg)) и занимает по высоте уже не толщину, а всю обложку. */
+.slot--current {
+    padding-block: calc(var(--vinyl-size) / 2);
+}
+
+/* Далеко за экраном — не рисуем вообще. Классом, а не inline-стилем:
+   так правило ниже про диск может его учесть. */
+.slot--culled { visibility: hidden; }
+
+/* ── состояния конверта ───────────────────────────────────────
+   Селекторы взаимоисключающие: :not() гарантирует, что два
+   правила никогда не совпадут одновременно. Поэтому ни порядок
+   строк, ни специфичность на результат не влияют.             */
+
+@media (hover: hover) {
+    .slot:not(.slot--current, .slot--focused, .slot--gone, .slot--swap, .slot--loading):hover .vinyl {
+        transform: translateZ(calc(var(--vinyl-size) / 4));
+    }
+}
+
+/* ближайший к центру — слегка подан вперёд, плашмя */
+.slot--focused:not(.slot--current, .slot--gone, .slot--swap, .slot--loading) .vinyl {
+    transform: translateZ(calc(var(--vinyl-size) / 4));
+}
+
+/* Текущий — конверт встаёт и разворачивается лицом к зрителю.
+   translateX уводит пару «пластинка + конверт» влево ровно настолько,
+   чтобы она осталась в центре сцены: конверт отъезжает вправо, и без
+   этой поправки вся связка висела бы правее середины. */
+.slot--current .vinyl {
+    transform: translateX(calc(var(--vinyl-size) * -0.38))
+               translateZ(calc(var(--vinyl-size) / 2))
+               rotateX(-90deg);
+}
+
+/* ── уход и приход ─────────────────────────────────────────────
+   Двигаем .vinyl, а НЕ .slot: слоту покадрово пишет transform
+   ShelfScroller, и второй хозяин у того же свойства — это ровно
+   та ошибка, на которой уже спотыкались. Правила идут последними,
+   чтобы при равной специфичности побеждать состояния выше.
+
+   Отсеянные уходят ВНИЗ и гаснут. Прозрачность вешаем на грани, а не на
+   .slot и не на .vinyl: opacity меньше единицы принудительно даёт
+   transform-style: flat, и коробка схлопнулась бы. Грани плоские,
+   им терять нечего. */
+.slot--gone { pointer-events: none; }
+
+.slot--gone .vinyl,
+.slot--swap .vinyl,
+.slot--loading .vinyl { transform: translateY(160px); }
+
+.slot--gone .vinyl__box > *,
+.slot--swap .vinyl__box > *,
+.slot--loading .vinyl__box > * { opacity: 0; }
+
+/* Уход и приход длиннее обычной смены состояния: тут важна плавность,
+   а не отзывчивость. Правило действует, пока класс висит, — то есть
+   на уходе; возвращается конверт базовым переходом .vinyl. */
+.slot--gone .vinyl,
+.slot--swap .vinyl,
+.slot--loading .vinyl {
+    transition: transform var(--dur-slow) var(--ease-dive);
+}
+
+/* Место закрывается ПОСЛЕ ухода и БЕЗ перехода. Анимировать height —
+   это пересчёт раскладки каждый кадр, а скроллер в том же кадре её читает. */
+.slot--hidden {
+    height: 0;
+    padding-block: 0;
+    visibility: hidden;
+}
+
+/* Меньше движения: конверты не ныряют — просто гаснут на месте */
+:root[data-motion="reduce"] .slot--gone .vinyl,
+:root[data-motion="reduce"] .slot--swap .vinyl,
+:root[data-motion="reduce"] .slot--loading .vinyl { transform: none; }
