@@ -170,6 +170,7 @@ export class ShelfScroller extends Emitter {
     follow(id, { instant = false } = {}) {
         if (!this.#elements.has(id)) return;
         this.#follow = id;
+        this.#updateFocus();
         this.#settle(instant);
     }
 
@@ -341,9 +342,14 @@ export class ShelfScroller extends Emitter {
         this.#state.set(element, state);
     }
 
+    /**
+     * Выбранный конверт — тот, к которому едет камера, а пока её ведёт
+     * палец или колесо — ближайший к центру. Иначе «End» и сразу «Enter»
+     * включали конверт, который в этот миг проезжал через центр.
+     */
     #updateFocus() {
         const index = this.#layout.nearest(this.#pos);
-        const id = index >= 0 ? this.#ids[index] : null;
+        const id = this.#follow ?? (index >= 0 ? this.#ids[index] : null);
         if (id === this.#focused) return;
         if (this.#focused) this.#elements.get(this.#focused)?.classList.remove('slot--focused');
         if (id) this.#elements.get(id)?.classList.add('slot--focused');

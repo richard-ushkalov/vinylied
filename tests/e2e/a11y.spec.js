@@ -95,3 +95,13 @@ test('настройки применяются сразу и сохраняют
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('vinilyed:settings')).values);
     expect(saved).toMatchObject({ theme: 'dark', fisheye: 0.3 });
 });
+
+test('End и сразу Enter включают последний конверт, а не проезжающий', async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'клавиатура — сценарий десктопа');
+    await page.goto('/');
+    await importTracks(page, fixturePaths().slice(0, 6));
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => state(page)).toMatchObject({ playing: true });
+    await expect(page.locator('.slot').last()).toHaveClass(/slot--current/);
+});
