@@ -75,6 +75,7 @@ const SHELL = [
     './src/ui/StatusLine.js',
     './src/ui/Theme.js',
     './src/ui/shelf/Shelf.js',
+    './src/ui/shelf/ShelfLayout.js',
     './src/ui/shelf/ShelfScroller.js',
     './src/ui/shelf/VinylView.js',
     './styles/base.css',

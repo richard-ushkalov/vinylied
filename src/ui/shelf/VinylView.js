@@ -10,7 +10,6 @@ export class VinylView {
     /** @type {import('../../library/Track.js').Track} */
     track;
     #swapTimer = 0;
-    hideTimer = 0;
 
     /**
      * @param {HTMLTemplateElement} template
@@ -80,7 +79,6 @@ export class VinylView {
 
     destroy() {
         clearTimeout(this.#swapTimer);
-        clearTimeout(this.hideTimer);
         this.element.remove();
     }
 }

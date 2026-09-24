@@ -4,10 +4,12 @@ import { VinylView } from './VinylView.js';
 const HIDE_AT = 640;        // чуть позже, чем догасает грань (520 мс)
 const STAGGER = 50;         // лесенка при поиске
 const REVEAL_STEP = 70;     // лесенка появления
-const DECODE_FIRST = 12;    // сколько обложек ждём перед показом
+const MAX_STEPS = 14;       // дальше лесенка не растёт — длинная полка не ждёт секундами
+const DECODE_FIRST = 12;    // сколько ближайших обложек ждём перед показом
 
 /**
- * Полка: конверты в DOM, их состояния и поиск по ним.
+ * Полка: конверты в DOM, их состояния и поиск по ним. Где конверт стоит,
+ * решают ShelfLayout и ShelfScroller; здесь — что на полке и в каком виде.
  *
  * Не знает ни про звук, ни про библиотеку: получает треки, отдаёт
  * события 'activate' {id} (тап по конверту или Enter) и 'filter' {visible}.
@@ -18,7 +20,8 @@ export class Shelf extends Emitter {
     /** @type {string[]} */
     #order = [];
     #query = '';
-    #settleTimer = 0;
+    /** @type {string | null} */
+    #current = null;
 
     /**
      * @param {{ list: HTMLElement, scene: HTMLElement, template: HTMLTemplateElement,
@@ -56,20 +59,22 @@ export class Shelf extends Emitter {
         });
 
         // listbox: активный вариант — ближайший к центру
-        this.scroller.on('focus', ({ index }) => {
-            const id = this.#order[index];
-            for (const view of this.#views.values()) view.element.setAttribute('aria-selected', 'false');
-            const view = id && this.#views.get(id);
-            if (!view) return;
-            view.element.setAttribute('aria-selected', 'true');
-            this.list.setAttribute('aria-activedescendant', view.element.id);
+        let selected = /** @type {HTMLElement | null} */ (null);
+        this.scroller.on('focus', ({ id }) => {
+            selected?.setAttribute('aria-selected', 'false');
+            selected = (id && this.#views.get(id)?.element) || null;
+            if (!selected) { this.list.removeAttribute('aria-activedescendant'); return; }
+            selected.setAttribute('aria-selected', 'true');
+            this.list.setAttribute('aria-activedescendant', selected.id);
         });
     }
 
     /**
      * @param {import('../../library/Track.js').Track[]} tracks
+     * @param {{ focus?: string | null }} [options] focus — кого сразу поставить
+     *   в центр (при запуске — трек «продолжить с места»)
      */
-    async add(tracks) {
+    async add(tracks, { focus = null } = {}) {
         if (!tracks.length) return;
         const first = !this.#order.length;
         const added = tracks.map(track => {
@@ -77,24 +82,30 @@ export class Shelf extends Emitter {
             // Прячем сразу: иначе конверты появляются голыми, а размытие
             // и наклоны наваливаются потом, одним рывком.
             view.element.classList.add('slot--loading');
-            if (this.#query && !track.matches(this.#query)) view.element.classList.add('slot--gone', 'slot--hidden');
             this.#views.set(track.id, view);
             this.#order.push(track.id);
             this.list.append(view.element);
             return view;
         });
+        this.#sync();
 
-        await Promise.all(added.slice(0, DECODE_FIRST).map(view => view.decode()));
-        // refresh раскладывает стопку СИНХРОННО — transform и filter уже
-        // записаны, ждать кадров не нужно. И нельзя: в свёрнутой вкладке
-        // requestAnimationFrame не приходит вовсе, и полка осталась бы невидимой.
-        this.scroller.refresh();
-        // первая пластинка на пустой полке — сразу по центру, а не доездом
-        // через паузу, пока ResizeObserver не успокоится
-        if (first) this.scroller.centerOn(0, { instant: true });
+        for (const view of added) {
+            if (this.#query && !view.track.matches(this.#query)) {
+                view.element.classList.add('slot--gone');
+                this.scroller.setPresent(view.track.id, false, { instant: true });
+            }
+        }
+        const anchor = focus ?? (first ? tracks[0].id : null);
+        if (anchor) this.scroller.follow(anchor, { instant: true });
+
+        // Проявляем от центра к краям: сначала то, на что смотрят, —
+        // а не по порядку, где трек №25 ждал бы полторы секунды.
+        const byDistance = [...added].sort((a, b) =>
+            this.scroller.distanceTo(a.track.id) - this.scroller.distanceTo(b.track.id));
+        await Promise.all(byDistance.slice(0, DECODE_FIRST).map(view => view.decode()));
         const step = this.reducedMotion() ? 0 : REVEAL_STEP;
-        added.forEach((view, index) =>
-            setTimeout(() => view.element.classList.remove('slot--loading'), Math.min(index, 20) * step));
+        byDistance.forEach((view, rank) =>
+            setTimeout(() => view.element.classList.remove('slot--loading'), Math.min(rank, MAX_STEPS) * step));
         this.emit('filter', { visible: this.visibleIds() });
     }
 
@@ -117,7 +128,7 @@ export class Shelf extends Emitter {
         view.destroy();
         this.#views.delete(id);
         this.#order = this.#order.filter(other => other !== id);
-        this.scroller.refresh();
+        this.#sync();
         this.emit('filter', { visible: this.visibleIds() });
     }
 
@@ -125,72 +136,62 @@ export class Shelf extends Emitter {
         for (const view of this.#views.values()) view.destroy();
         this.#views.clear();
         this.#order = [];
+        this.#current = null;
         this.list.removeAttribute('aria-activedescendant');
-        this.scroller.refresh();
+        this.#sync();
         this.emit('filter', { visible: [] });
     }
 
     /**
      * @param {string | null} current
      * @param {string | null} previous прежний трек: ему ещё нужно доиграть уход
+     * @param {{ instant?: boolean }} [options] instant — при запуске: без анимации
      */
-    setCurrent(current, previous) {
+    setCurrent(current, previous, { instant = false } = {}) {
+        this.#current = current;
         for (const [id, view] of this.#views) {
             view.element.classList.toggle('slot--current', id === current);
             view.element.classList.toggle('slot--recent', id === previous && id !== current);
             if (id === current) view.element.setAttribute('aria-current', 'true');
             else view.element.removeAttribute('aria-current');
         }
+        this.scroller.setCurrent(current, { instant });
     }
 
     /**
-     * Поиск. Отсеянные конверты уходят вниз и схлопывают своё место,
-     * полка закрывается. Класс снимается — и они приезжают обратно.
-     * Играющий трек подчиняется поиску так же, как все: он остаётся
-     * в панели снизу, а мини-обложка вернёт к нему.
+     * Поиск. Отсеянные конверты уходят вниз, и их место схлопывается,
+     * когда они уже догасли. Играющий трек подчиняется поиску так же, как
+     * все: он остаётся в панели снизу, а мини-обложка вернёт к нему.
      * @param {string} raw
      */
     filter(raw) {
         const query = raw.trim().toLowerCase();
         this.#query = query;
+        let rank = 0;
         let changed = false;
 
-        this.#order.forEach((id, index) => {
+        for (const id of this.#order) {
             const view = /** @type {VinylView} */ (this.#views.get(id));
             const element = view.element;
-            const track = view.track;
-            const gone = Boolean(query) && !track?.matches(query);
-            if (gone === element.classList.contains('slot--gone')) return;
+            const gone = Boolean(query) && !view.track.matches(query);
+            if (gone === element.classList.contains('slot--gone')) continue;
             changed = true;
-            clearTimeout(view.hideTimer);
-
-            if (gone) {
-                element.classList.add('slot--gone');
-                // Место закрываем, когда конверт УЖЕ ушёл и догас, и лесенкой:
-                // если схлопнуть все высоты разом, полка дёргается.
-                view.hideTimer = window.setTimeout(() => {
-                    if (element.classList.contains('slot--gone')) element.classList.add('slot--hidden');
-                }, this.reducedMotion() ? 0 : HIDE_AT + index * STAGGER);
-            } else {
-                element.classList.remove('slot--hidden');
-                void element.offsetWidth;    // вернуть высоту ДО того, как включится переход
-                element.classList.remove('slot--gone');
-            }
-        });
-
+            element.classList.toggle('slot--gone', gone);
+            // Место закрываем, когда конверт УЖЕ ушёл, и лесенкой: если
+            // схлопнуть всё разом, полка дёргается. Возвращаем — сразу.
+            this.scroller.setPresent(id, !gone, {
+                delay: gone ? HIDE_AT + Math.min(rank++, MAX_STEPS) * STAGGER : 0,
+            });
+        }
         if (!changed) return;
-        this.scroller.refresh();     // сразу: снять отсечение с тех, кто снова нужен
-        this.emit('filter', { visible: this.visibleIds() });
 
-        clearTimeout(this.#settleTimer);
-        const settle = this.reducedMotion() ? 0 : HIDE_AT + this.#order.length * STAGGER + 120;
-        this.#settleTimer = window.setTimeout(() => {
-            this.scroller.refresh();
-            // И подвести полку к первому найденному: магнит доводил
-            // до прежнего индекса — а тот мог сам отсеяться.
-            const first = this.#order.findIndex(id => !this.#views.get(id)?.element.classList.contains('slot--gone'));
-            if (first >= 0) this.scroller.centerOn(first);
-        }, settle);
+        // Камера держит того, кто остался: играющий, иначе тот, что был
+        // в центре, иначе первый найденный. Она едет вместе со схлопыванием,
+        // и никаких «подвести полку, когда всё уляжется» больше не нужно.
+        const visible = this.visibleIds();
+        const keep = [this.#current, this.scroller.focusedId].find(id => id && visible.includes(id)) ?? visible[0];
+        if (keep) this.scroller.follow(keep);
+        this.emit('filter', { visible });
     }
 
     /** Треки, которые сейчас видны, в порядке полки. */
@@ -204,23 +205,25 @@ export class Shelf extends Emitter {
     }
 
     /** @param {string} id @param {{ instant?: boolean }} [options] */
-    centerOn(id, options) {
-        const index = this.#order.indexOf(id);
-        if (index >= 0) this.scroller.centerOn(index, options);
+    follow(id, options) {
+        this.scroller.follow(id, options);
     }
 
     /** @param {string} id */
     isOnScreen(id) {
-        const index = this.#order.indexOf(id);
-        return index >= 0 && this.scroller.isOnScreen(index);
+        return this.scroller.isOnScreen(id);
     }
 
     focusedId() {
-        return this.#order[this.scroller.focusedIndex] ?? null;
+        return this.scroller.focusedId;
     }
 
     /** @param {string | null} id */
     discOf(id) {
         return id ? this.#views.get(id)?.disc ?? null : null;
+    }
+
+    #sync() {
+        this.scroller.setItems(this.#order.map(id => ({ id, element: /** @type {VinylView} */ (this.#views.get(id)).element })));
     }
 }
