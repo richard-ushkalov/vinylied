@@ -13,4 +13,4 @@
  * (так же устроены Picard и другие клиенты), прятать его не нужно.
  * Для коммерческого продукта у AcoustID отдельный платный тариф.
  */
-export const ACOUSTID_KEY = '';
+export const ACOUSTID_KEY = 'YdhNMrIBX5';
