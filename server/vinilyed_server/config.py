@@ -25,17 +25,27 @@ def new_code() -> str:
     return secrets.token_urlsafe(9)
 
 
+# Откуда браузеру можно звать сервер (CORS) — всегда, что бы ни лежало
+# в файле настроек. Приложение живёт на GitHub Pages; если у аккаунта свой
+# домен, GitHub отдаёт его оттуда и перенаправляет со старого адреса.
+# Последние два — локальная разработка.
+BUILTIN_ORIGINS = (
+    "https://richard-ushkalov.github.io",
+    "https://richard-ushkalov.com",
+    "https://www.richard-ushkalov.com",
+    "http://127.0.0.1:4173",
+    "http://localhost:4173",
+)
+
+
 @dataclass
 class Config:
     # Слушаем только сам Мак: снаружи к серверу ведёт туннель Cloudflare.
     host: str = "127.0.0.1"
     port: int = 8765
-    # Откуда браузеру можно звать сервер (CORS). Второй — локальная разработка.
-    origins: list[str] = field(default_factory=lambda: [
-        "https://richard-ushkalov.github.io",
-        "http://127.0.0.1:4173",
-        "http://localhost:4173",
-    ])
+    # Дополнительные origins к встроенным. В старых файлах тут лежит прежний
+    # полный список — он просто объединяется со встроенным.
+    origins: list[str] = field(default_factory=list)
     # имя → sha256 кода
     codes: dict[str, str] = field(default_factory=dict)
     data_dir: str = "~/Library/Caches/vinilyed-server"
@@ -48,10 +58,16 @@ class Config:
     search_per_minute: int = 30
     jobs_per_code: int = 3
     queue_limit: int = 20
+    previews_per_minute: int = 20
+    previews_at_once: int = 2
     # Пусто — spotDL ищет без официального API Spotify. Если начнутся
     # отказы или лимиты, впишите ключи своего приложения Spotify.
     spotify_client_id: str = ""
     spotify_client_secret: str = ""
+
+    @property
+    def allowed_origins(self) -> frozenset[str]:
+        return frozenset(BUILTIN_ORIGINS) | frozenset(self.origins)
 
     @property
     def data_path(self) -> Path:

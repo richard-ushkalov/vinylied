@@ -27,7 +27,8 @@ JANITOR_EVERY = 60.0   # с — как часто рабочий поток ме
 @dataclass
 class Job:
     id: str
-    track_id: str
+    source: str                    # spotify | youtube
+    item_id: str                   # id трека Spotify или ролика YouTube
     owner: str
     state: str = "queued"          # queued → running → done | error
     progress: float = 0.0
@@ -40,6 +41,11 @@ class Job:
     @property
     def active(self) -> bool:
         return self.state in ("queued", "running")
+
+    @property
+    def key(self) -> str:
+        """Одно и то же у всех, кто просит этот трек: по нему кеш и папка."""
+        return f"{self.source}-{self.item_id}"
 
     def to_json(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -77,14 +83,14 @@ class JobQueue:
         self.limit = limit
         self.clock = clock
         self._jobs: dict[str, Job] = {}
-        # готовые файлы по id трека: повторная просьба — сразу из кеша
+        # готовые файлы по ключу трека: повторная просьба — сразу из кеша
         self._files: dict[str, tuple[Path, float]] = {}
         self._pending: queue.Queue[Job | None] = queue.Queue()
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
 
     # ── приём ────────────────────────────────────────────────────
-    def submit(self, track_id: str, owner: str) -> Job:
+    def submit(self, source: str, item_id: str, owner: str) -> Job:
         with self._lock:
             active = [job for job in self._jobs.values() if job.active]
             if len(active) >= self.limit:
@@ -92,7 +98,7 @@ class JobQueue:
             if sum(job.owner == owner for job in active) >= self.per_owner:
                 raise QueueFullError("Уже качается несколько треков — дождитесь их")
 
-            job = Job(id=uuid.uuid4().hex, track_id=track_id, owner=owner, created_at=self.clock())
+            job = Job(id=uuid.uuid4().hex, source=source, item_id=item_id, owner=owner, created_at=self.clock())
             self._jobs[job.id] = job
             if self._take_cached(job):
                 return job
@@ -143,27 +149,27 @@ class JobQueue:
             job.progress = max(job.progress, min(value, 0.99))
             job.stage = stage
 
-        out_dir = self.data_dir / job.track_id
+        out_dir = self.data_dir / job.key
         out_dir.mkdir(parents=True, exist_ok=True)
         try:
-            path = self.engine.download(job.track_id, out_dir, progress)
+            path = self.engine.download(job.source, job.item_id, out_dir, progress)
         except EngineError as error:
             self._fail(job, str(error), out_dir)
             return
         except Exception:  # noqa: BLE001 — задание не должно ронять рабочий поток
-            log.exception("Скачивание %s упало", job.track_id)
+            log.exception("Скачивание %s упало", job.key)
             self._fail(job, "Внутренняя ошибка сервера", out_dir)
             return
         with self._lock:
-            self._files[job.track_id] = (path, self.clock())
+            self._files[job.key] = (path, self.clock())
             self._finish(job, path)
 
     def _take_cached(self, job: Job) -> bool:
         """Трек уже скачан — отдаём его и продлеваем ему жизнь. Под замком."""
-        cached = self._files.get(job.track_id)
+        cached = self._files.get(job.key)
         if not cached or not cached[0].exists():
             return False
-        self._files[job.track_id] = (cached[0], self.clock())
+        self._files[job.key] = (cached[0], self.clock())
         self._finish(job, cached[0])
         return True
 
@@ -176,7 +182,7 @@ class JobQueue:
         # Сначала убрать за собой, потом объявить ошибку: кто увидел «error»,
         # не должен застать недокачанную папку.
         with self._lock:
-            if job.track_id not in self._files:
+            if job.key not in self._files:
                 shutil.rmtree(out_dir, ignore_errors=True)
             job.state, job.stage, job.error = "error", "Ошибка", message
             job.finished_at = self.clock()
@@ -189,7 +195,7 @@ class JobQueue:
             for job_id, job in list(self._jobs.items()):
                 if job.finished_at is not None and now - job.finished_at > self.ttl:
                     del self._jobs[job_id]
-            for track_id, (path, finished_at) in list(self._files.items()):
+            for key, (path, finished_at) in list(self._files.items()):
                 if now - finished_at > self.ttl:
-                    del self._files[track_id]
+                    del self._files[key]
                     shutil.rmtree(path.parent, ignore_errors=True)
