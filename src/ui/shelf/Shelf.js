@@ -12,7 +12,11 @@ const DECODE_FIRST = 12;    // сколько ближайших обложек 
  * решают ShelfLayout и ShelfScroller; здесь — что на полке и в каком виде.
  *
  * Не знает ни про звук, ни про библиотеку: получает треки, отдаёт
- * события 'activate' {id} (тап по конверту или Enter) и 'filter' {visible}.
+ * события 'activate' {id} (тап по конверту или Enter), 'pending' {id}
+ * (то же, но по конверту, который ещё качается) и 'filter' {visible}.
+ *
+ * Заготовки (addPending) — конверты скачиваемых треков. Играть их нельзя,
+ * поэтому в visibleIds их нет; поиск их не прячет — их только что просили.
  */
 export class Shelf extends Emitter {
     /** @type {Map<string, VinylView>} */
@@ -22,6 +26,8 @@ export class Shelf extends Emitter {
     #query = '';
     /** @type {string | null} */
     #current = null;
+    /** @type {Set<string>} */
+    #pending = new Set();
 
     /**
      * @param {{ list: HTMLElement, scene: HTMLElement, template: HTMLTemplateElement,
@@ -46,16 +52,16 @@ export class Shelf extends Emitter {
         this.scene.addEventListener('click', event => {
             if (!this.#order.length) return;
             const slot = /** @type {HTMLElement | null} */ (/** @type {Element} */ (event.target).closest?.('.slot'));
-            const id = slot?.dataset.id ?? this.focusedId();
-            if (id) this.emit('activate', { id });
+            const id = slot?.dataset.id ?? this.scroller.focusedId;
+            if (id) this.#activate(id);
         });
 
         this.list.addEventListener('keydown', event => {
             if (event.key !== 'Enter') return;
-            const id = this.focusedId();
+            const id = this.scroller.focusedId;
             if (!id) return;
             event.preventDefault();
-            this.emit('activate', { id });
+            this.#activate(id);
         });
 
         // listbox: активный вариант — ближайший к центру
@@ -75,7 +81,13 @@ export class Shelf extends Emitter {
      *   в центр (при запуске — трек «продолжить с места»)
      */
     async add(tracks, { focus = null } = {}) {
-        if (!tracks.length) return;
+        // скачанный трек встаёт на место своей заготовки
+        for (const track of tracks) if (this.#pending.has(track.id)) this.#adopt(track);
+        tracks = tracks.filter(track => !this.#views.has(track.id));
+        if (!tracks.length) {
+            this.emit('filter', { visible: this.visibleIds() });
+            return;
+        }
         const first = !this.#order.length;
         const added = tracks.map(track => {
             const view = new VinylView(this.template, track);
@@ -121,12 +133,54 @@ export class Shelf extends Emitter {
         if (this.#query) this.filter(this.#query);
     }
 
+    /**
+     * Конверт скачиваемого трека: встаёт в конец полки прозрачным, камера
+     * едет к нему, дальше он проявляется вместе с загрузкой (setPending).
+     * @param {import('../../downloads/PendingTrack.js').PendingTrack} track
+     */
+    addPending(track) {
+        if (this.#views.has(track.id)) return;
+        const view = new VinylView(this.template, track);
+        view.element.classList.add('slot--pending');
+        view.setProgress(0);
+        this.#views.set(track.id, view);
+        this.#order.push(track.id);
+        this.#pending.add(track.id);
+        this.list.append(view.element);
+        this.#sync();
+        this.scroller.follow(track.id);
+    }
+
+    /** @param {string} id @param {number} fraction 0..1 */
+    setPending(id, fraction) {
+        if (this.#pending.has(id)) this.#views.get(id)?.setProgress(fraction);
+    }
+
+    /** @param {string} id */
+    isPending(id) {
+        return this.#pending.has(id);
+    }
+
+    /**
+     * Скачать не вышло: заготовка уходит, как отсеянный поиском конверт,
+     * и её место схлопывается.
+     * @param {string} id
+     */
+    dropPending(id) {
+        const view = this.#views.get(id);
+        if (!view || !this.#pending.has(id)) return;
+        view.element.classList.add('slot--gone');
+        this.scroller.setPresent(id, false, { delay: HIDE_AT });
+        setTimeout(() => this.remove(id), HIDE_AT + 700);
+    }
+
     /** @param {string} id */
     remove(id) {
         const view = this.#views.get(id);
         if (!view) return;
         view.destroy();
         this.#views.delete(id);
+        this.#pending.delete(id);
         this.#order = this.#order.filter(other => other !== id);
         this.#sync();
         this.emit('filter', { visible: this.visibleIds() });
@@ -135,6 +189,7 @@ export class Shelf extends Emitter {
     clear() {
         for (const view of this.#views.values()) view.destroy();
         this.#views.clear();
+        this.#pending.clear();
         this.#order = [];
         this.#current = null;
         this.list.removeAttribute('aria-activedescendant');
@@ -171,6 +226,7 @@ export class Shelf extends Emitter {
         let changed = false;
 
         for (const id of this.#order) {
+            if (this.#pending.has(id)) continue;
             const view = /** @type {VinylView} */ (this.#views.get(id));
             const element = view.element;
             const gone = Boolean(query) && !view.track.matches(query);
@@ -189,14 +245,18 @@ export class Shelf extends Emitter {
         // в центре, иначе первый найденный. Она едет вместе со схлопыванием,
         // и никаких «подвести полку, когда всё уляжется» больше не нужно.
         const visible = this.visibleIds();
-        const keep = [this.#current, this.scroller.focusedId].find(id => id && visible.includes(id)) ?? visible[0];
+        // заготовка скачивания в visibleIds не входит, но поиск её не прячет —
+        // если смотрели на неё, на ней и остаёмся
+        const stays = (/** @type {string | null} */ id) => Boolean(id) && (visible.includes(id) || this.#pending.has(id));
+        const keep = [this.#current, this.scroller.focusedId].find(stays) ?? visible[0];
         if (keep) this.scroller.follow(keep);
         this.emit('filter', { visible });
     }
 
-    /** Треки, которые сейчас видны, в порядке полки. */
+    /** Треки, которые сейчас видны и готовы играть, в порядке полки. */
     visibleIds() {
-        return this.#order.filter(id => !this.#views.get(id)?.element.classList.contains('slot--gone'));
+        return this.#order.filter(id =>
+            !this.#pending.has(id) && !this.#views.get(id)?.element.classList.contains('slot--gone'));
     }
 
     /** @param {string} id */
@@ -214,13 +274,34 @@ export class Shelf extends Emitter {
         return this.scroller.isOnScreen(id);
     }
 
+    /** Трек в центре — если его можно играть (заготовка скачивания — нельзя). */
     focusedId() {
-        return this.scroller.focusedId;
+        const id = this.scroller.focusedId;
+        return id && !this.#pending.has(id) ? id : null;
     }
 
     /** @param {string | null} id */
     discOf(id) {
         return id ? this.#views.get(id)?.disc ?? null : null;
+    }
+
+    /** @param {string} id */
+    #activate(id) {
+        this.emit(this.#pending.has(id) ? 'pending' : 'activate', { id });
+    }
+
+    /**
+     * Заготовка стала треком: подписи и обложка — уже из файла, прозрачность
+     * снимается. Под текущий поиск трек заново не проверяем: его только что
+     * скачали по этому поиску, и он не должен тут же исчезнуть.
+     * @param {import('../../library/Track.js').Track} track
+     */
+    #adopt(track) {
+        const view = /** @type {VinylView} */ (this.#views.get(track.id));
+        this.#pending.delete(track.id);
+        view.render(track);
+        view.element.classList.remove('slot--pending');
+        view.setProgress(null);
     }
 
     #sync() {

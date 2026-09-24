@@ -58,3 +58,15 @@ export const state = page => page.evaluate(() => ({
 
 /** Тап по кнопке ⏯ в панели. */
 export const togglePlay = page => page.locator('.dock [data-action="play"]').click();
+
+/**
+ * Подменяет встроенный ключ AcoustID, оставляя остальной src/config.js
+ * как есть: из него импортируется не только ключ.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} key
+ */
+export const withAcoustIdKey = (page, key) => page.route('**/src/config.js', async route => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(/ACOUSTID_KEY = '[^']*'/, `ACOUSTID_KEY = '${key}'`);
+    await route.fulfill({ response, body });
+});

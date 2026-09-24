@@ -126,6 +126,12 @@
                         <svg aria-hidden="true"><use href="#i-close"/></svg>
                     </button>
                 </form>
+                <!-- «Скачать из сети» — над панелью, пока открыт поиск -->
+                <section class="suggest" aria-label="Скачать из сети" hidden>
+                    <button class="suggest__more" type="button" data-action="suggest-more">Нет нужного? Найти в сети</button>
+                    <p class="suggest__note" role="status"></p>
+                    <ul class="suggest__list"></ul>
+                </section>
                 <div class="dock__actions">
                     <button class="icon-button icon-button--primary" type="button" data-action="play" aria-label="Играть">
                         <svg aria-hidden="true"><use href="#i-play"/></svg>
@@ -194,6 +200,10 @@
 
                     <section class="sheet__section" aria-labelledby="tracks-title">
                         <h3 id="tracks-title" class="sheet__subtitle">Треки</h3>
+                        <div class="sheet__line">
+                            <button class="text-button" type="button" data-action="dedupe">Удалить дубликаты</button>
+                            <p class="sheet__note" data-bind="dedupe" aria-live="polite"></p>
+                        </div>
                         <ul class="track-list" data-bind="tracks"></ul>
                     </section>
                 </div>

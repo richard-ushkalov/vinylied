@@ -17,7 +17,7 @@ import { TRACKS } from './Database.js';
 const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|flac|ogg|oga|opus|wav|wave|aif|aiff|webm|weba|alac|caf)$/i;
 
 /** randomUUID есть только в защищённом контексте — на http по локальной сети его нет */
-const newId = () => globalThis.crypto?.randomUUID?.()
+export const newId = () => globalThis.crypto?.randomUUID?.()
     ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 /** @param {File} file */
@@ -84,11 +84,15 @@ export class Library extends Emitter {
     /**
      * Добавляет файлы на полку. Импорты идут строго по очереди: два выбора
      * подряд раньше перемешивались и дрались за одну полку.
-     * @param {File[]} files
+     *
+     * Вместо File можно передать { file, id } — с заранее выданным id:
+     * так скачанный трек занимает место своей заготовки на полке.
+     * @param {(File | { file: File, id: string })[]} items
      * @returns {Promise<TrackRecord[]>}
      */
-    import(files) {
-        const run = this.#queue.then(() => this.#import(files));
+    import(items) {
+        const entries = items.map(item => ('file' in item ? item : { file: item }));
+        const run = this.#queue.then(() => this.#import(entries));
         this.#queue = run.catch(() => {});
         return run;
     }
@@ -129,9 +133,9 @@ export class Library extends Emitter {
         return bytes;
     }
 
-    /** @param {File[]} files */
+    /** @param {{ file: File, id?: string }[]} files */
     async #import(files) {
-        const audio = files.filter(isAudio);
+        const audio = files.filter(({ file }) => isAudio(file));
         const total = audio.length;
         const keys = new Set([...this.#records.values()].map(record => record.key));
         /** @type {TrackRecord[]} */
@@ -141,12 +145,12 @@ export class Library extends Emitter {
         this.importing = true;
         this.emit('import-start', { total });
         try {
-            for (const [index, file] of audio.entries()) {
+            for (const [index, { file, id }] of audio.entries()) {
                 this.emit('progress', { done: index, total, name: file.name });
                 const key = keyOf(file);
                 if (keys.has(key)) { skipped++; continue; }
                 try {
-                    const record = await this.#createRecord(file, key);
+                    const record = await this.#createRecord(file, key, id);
                     if (this.persistent) await this.db.put(TRACKS, record);
                     this.#records.set(record.id, record);
                     keys.add(key);
@@ -172,15 +176,16 @@ export class Library extends Emitter {
     /**
      * @param {File} file
      * @param {string} key
+     * @param {string} [id]
      * @returns {Promise<TrackRecord>}
      */
-    async #createRecord(file, key) {
+    async #createRecord(file, key, id = newId()) {
         const tags = await this.reader.read(file);
         // Копия содержимого, а не ссылка на File: на Android файл из
         // выбора может жить во временном хранилище и пропасть после сессии.
         const copy = new Blob([await file.arrayBuffer()], { type: file.type });
         return {
-            id: newId(),
+            id,
             key,
             name: file.name,
             type: file.type,

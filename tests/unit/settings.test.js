@@ -70,3 +70,16 @@ test('строковая настройка: пробелы срезаются, 
     settings.set('acoustidKey', ' 8XaBELgH ');
     assert.equal(settings.get('acoustidKey'), '8XaBELgH');
 });
+
+test('адрес сервера скачивания: только origin, https или этот компьютер', async () => {
+    const { SCHEMA, coerce } = await import('../../src/core/Settings.js');
+    const field = SCHEMA.downloadServer;
+    for (const ok of ['https://dl.richard-ushkalov.com', 'https://x.test:8443', 'http://127.0.0.1:8765', 'http://localhost', '']) {
+        assert.equal(coerce(field, ok), ok, ok);
+    }
+    for (const bad of ['javascript:alert(1)', 'http://192.168.1.2:8765', 'https://x.test/path', 'ftp://x.test', 'https://']) {
+        assert.equal(coerce(field, bad), '', bad);
+    }
+    assert.equal(coerce(SCHEMA.downloadCode, 'lxM57u1SboPy'), 'lxM57u1SboPy');
+    assert.equal(coerce(SCHEMA.downloadCode, 'код с пробелом'), '');
+});

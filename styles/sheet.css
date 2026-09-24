@@ -104,6 +104,9 @@
     color: var(--muted);
 }
 .sheet__note { font-size: 13px; line-height: 1.45; color: var(--muted); }
+/* кнопка и её итог в одну строку, на узком экране — переносом */
+.sheet__line { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
+.sheet__line .sheet__note:empty { display: none; }
 
 /* ── список треков ─────────────────────────────────────────────── */
 .track-list {

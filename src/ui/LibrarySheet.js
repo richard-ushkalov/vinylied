@@ -1,12 +1,15 @@
 import { Emitter } from '../core/Emitter.js';
 import { formatBytes, tracksLabel } from '../core/format.js';
+import { findDuplicates } from '../library/duplicates.js';
 import { describeAcoustIdStatus } from './acoustidStatus.js';
+
+const LISTED = 6;   // столько повторов называем в подтверждении, дальше — «и ещё N»
 
 /**
  * Лист «Полка»: сколько треков и места, добавить, установить, порядок
- * и повтор, проверка обложек, список треков с удалением, очистка.
+ * и повтор, проверка обложек, список треков с удалением, дубликаты, очистка.
  *
- * События: 'add', 'settings', 'install', 'recheck', 'clear', 'remove' {id}.
+ * События: 'add', 'settings', 'install', 'recheck', 'clear', 'remove' {ids}.
  */
 export class LibrarySheet extends Emitter {
     #dialog;
@@ -36,6 +39,8 @@ export class LibrarySheet extends Emitter {
         this.stats = $('[data-bind="stats"]');
         this.lookupText = $('[data-bind="lookup"]');
         this.list = $('[data-bind="tracks"]');
+        this.dedupeButton = /** @type {HTMLButtonElement} */ ($('[data-action="dedupe"]'));
+        this.dedupeText = $('[data-bind="dedupe"]');
         this.installButton = $('[data-action="install"]');
         this.iosHint = $('[data-bind="ios-install"]');
     }
@@ -61,9 +66,10 @@ export class LibrarySheet extends Emitter {
                 case 'remove': {
                     const id = target.getAttribute('data-id');
                     const track = id && this.tracks.get(id);
-                    if (track && confirm(`Убрать «${track.title}» с полки?`)) this.emit('remove', { id });
+                    if (track && confirm(`Убрать «${track.title}» с полки?`)) this.emit('remove', { ids: [id] });
                     break;
                 }
+                case 'dedupe': this.#dedupe(); break;
             }
         });
 
@@ -87,6 +93,7 @@ export class LibrarySheet extends Emitter {
     }
 
     open() {
+        this.dedupeText.textContent = '';
         this.render();
         this.#dialog.showModal();
     }
@@ -123,6 +130,43 @@ export class LibrarySheet extends Emitter {
             `Проверено ${checked} из ${total}${running ? ' — идёт проверка…' : '.'}`,
             describeAcoustIdStatus(this.acoustId.status),
         ].join(' ');
+    }
+
+    /**
+     * Ищем повторы, показываем, что уйдёт, и только после согласия убираем.
+     * Остаётся лучший из группы: играющий, опознанный, качественнее, старше.
+     */
+    async #dedupe() {
+        const button = this.dedupeButton;
+        button.disabled = true;
+        this.dedupeText.textContent = 'Ищу дубликаты…';
+        try {
+            const groups = await findDuplicates(this.tracks.values(), { current: this.controller.current });
+            const extra = groups.flatMap(group => group.remove);
+            if (!extra.length) {
+                this.dedupeText.textContent = 'Дубликатов нет.';
+                return;
+            }
+            const names = extra.slice(0, LISTED).map(track => `• ${[track.title, track.artist].filter(Boolean).join(' — ')}`);
+            if (extra.length > LISTED) names.push(`…и ещё ${extra.length - LISTED}`);
+            const question = [
+                `Найдено дубликатов: ${extra.length}. Убрать их с полки?`,
+                '', ...names, '',
+                'От каждой песни останется один трек — играющий, опознанный или лучшего качества.',
+            ].join('\n');
+            if (!confirm(question)) {
+                this.dedupeText.textContent = '';
+                return;
+            }
+            const freed = extra.reduce((sum, track) => sum + track.record.size, 0);
+            this.emit('remove', { ids: extra.map(track => track.id) });
+            this.dedupeText.textContent = `Убрано: ${tracksLabel(extra.length)}, освободилось ${formatBytes(freed)}.`;
+        } catch (error) {
+            console.error(error);
+            this.dedupeText.textContent = 'Не удалось проверить полку.';
+        } finally {
+            button.disabled = false;
+        }
     }
 
     #renderTracks() {

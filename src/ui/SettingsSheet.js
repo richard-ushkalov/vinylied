@@ -1,9 +1,15 @@
+import { coerce } from '../core/Settings.js';
+import { describeServerStatus } from '../downloads/DownloadServer.js';
 import { describeAcoustIdStatus } from './acoustidStatus.js';
 
 /**
+ * @typedef {{ source: import('../core/Emitter.js').Emitter, text: () => string }} StatusSpec
+ *   строка состояния под полем: source шлёт 'status', text — что написать
  * @typedef {{ key: string, label: string, type: 'range' | 'switch' | 'choice' | 'text',
  *             options?: [string, string][], hint?: string, needs?: 'effects' | 'volume',
- *             placeholder?: string, hidden?: boolean }} FieldSpec
+ *             placeholder?: string, hidden?: boolean,
+ *             maxLength?: number, inputMode?: string, status?: StatusSpec,
+ *             normalize?: (value: string) => string, invalid?: string }} FieldSpec
  */
 
 /**
@@ -17,6 +23,7 @@ export class SettingsSheet {
     #player;
     #platform;
     #acoustId;
+    #downloads;
     /** @type {Map<string, { field: FieldSpec, root: HTMLElement }>} */
     #fields = new Map();
 
@@ -24,20 +31,24 @@ export class SettingsSheet {
      * @param {{ dialog: HTMLDialogElement, settings: import('../core/Settings.js').Settings,
      *           player: import('../audio/Player.js').Player,
      *           platform: import('../core/platform.js').Platform,
-     *           acoustId: import('../lookup/AcoustIdClient.js').AcoustIdClient }} deps
+     *           acoustId: import('../lookup/AcoustIdClient.js').AcoustIdClient,
+     *           downloads: import('../downloads/DownloadServer.js').DownloadServer }} deps
      */
-    constructor({ dialog, settings, player, platform, acoustId }) {
+    constructor({ dialog, settings, player, platform, acoustId, downloads }) {
         this.#dialog = dialog;
         this.#form = /** @type {HTMLFormElement} */ (dialog.querySelector('[data-bind="form"]'));
         this.#settings = settings;
         this.#player = player;
         this.#platform = platform;
         this.#acoustId = acoustId;
+        this.#downloads = downloads;
     }
 
     /** @returns {{ title: string, fields: FieldSpec[] }[]} */
     #sections() {
         const ios = this.#platform.ios;
+        const acoustId = this.#acoustId;
+        const server = this.#downloads;
         return [
             {
                 title: 'Вид',
@@ -82,9 +93,23 @@ export class SettingsSheet {
                 fields: [
                     { key: 'onlineLookup', label: 'Искать обложки и названия', type: 'switch',
                       hint: 'Наружу уходит отпечаток звука (AcoustID) и названия треков (iTunes). Сама музыка никуда не отправляется.' },
-                    { key: 'acoustidKey', label: 'Ключ AcoustID', type: 'text', placeholder: 'встроенный',
+                    { key: 'acoustidKey', label: 'Ключ AcoustID', type: 'text', placeholder: 'встроенный', maxLength: 32,
                       hint: 'Ключ приложения: acoustid.org → Applications → New application. '
-                          + 'Личный ключ со страницы «API key» не подойдёт. Пусто — встроенный ключ.' },
+                          + 'Личный ключ со страницы «API key» не подойдёт. Пусто — встроенный ключ.',
+                      status: { source: acoustId, text: () => describeAcoustIdStatus(acoustId.status) } },
+                ],
+            },
+            {
+                title: 'Скачивание',
+                fields: [
+                    { key: 'downloadCode', label: 'Код доступа', type: 'text', placeholder: 'нет', maxLength: 64,
+                      hint: 'Код выдаёт владелец сервера. С ним поиск предложит скачать то, чего нет на полке.',
+                      status: { source: server, text: () => describeServerStatus(server.status) } },
+                    { key: 'downloadServer', label: 'Адрес сервера', type: 'text', placeholder: 'встроенный',
+                      maxLength: 200, inputMode: 'url',
+                      normalize: value => value.replace(/\/+$/, ''),
+                      invalid: 'Нужен адрес вида https://сервер — без пути.',
+                      hint: `Пусто — встроенный: ${new URL(server.fallback).host}.` },
                 ],
             },
         ];
@@ -107,14 +132,21 @@ export class SettingsSheet {
 
         this.#settings.on('change', ({ key }) => this.#sync(key));
         this.#player.on('engine', () => this.#availability());
-        this.#acoustId.on('status', () => this.#keyStatus());
+        for (const [key, { field }] of this.#fields) field.status?.source.on('status', () => this.#renderStatus(key));
+        // сменили код или адрес — сразу проверить, чтобы статус был про новый
+        this.#settings.on('change', ({ key }) => {
+            if ((key === 'downloadCode' || key === 'downloadServer') && this.#dialog.open) this.#downloads.check();
+        });
     }
 
     /** @param {'keys'} [section] */
     open(section) {
-        for (const key of this.#fields.keys()) this.#sync(key);
+        for (const key of this.#fields.keys()) {
+            this.#sync(key);
+            this.#renderStatus(key);
+        }
         this.#availability();
-        this.#keyStatus();
+        this.#downloads.check();
         this.#dialog.showModal();
         if (section) this.#form.querySelector(`[data-section="${section}"]`)?.scrollIntoView({ block: 'start' });
     }
@@ -128,7 +160,17 @@ export class SettingsSheet {
         if (!entry) return;
         const { field } = entry;
         if (field.type === 'text') {
-            if (final) this.#settings.set(field.key, input.value.trim());
+            if (!final) return;
+            const value = (field.normalize ?? (text => text))(input.value.trim());
+            // не подходит — не молча выкидываем, а объясняем под полем
+            if (coerce(this.#settings.schema[field.key], value) !== value) {
+                const note = entry.root.querySelector('[data-bind="status"]');
+                if (note) note.textContent = field.invalid ?? 'Такое значение не подходит.';
+                return;
+            }
+            this.#settings.set(field.key, value);
+            input.value = value;
+            this.#renderStatus(field.key);
             return;
         }
         if (field.type === 'range') this.#settings.set(field.key, Number(input.value) / 100);
@@ -159,10 +201,15 @@ export class SettingsSheet {
         }
     }
 
-    /** Состояние ключа — прямо под полем, где его меняют. */
-    #keyStatus() {
-        const note = this.#fields.get('acoustidKey')?.root.querySelector('[data-bind="key-status"]');
-        if (note) note.textContent = describeAcoustIdStatus(this.#acoustId.status);
+    /**
+     * Состояние — прямо под полем, где его меняют: ключ AcoustID, связь
+     * с сервером скачивания.
+     * @param {string} key
+     */
+    #renderStatus(key) {
+        const entry = this.#fields.get(key);
+        const note = entry?.root.querySelector('[data-bind="status"]');
+        if (note) note.textContent = entry?.field.status?.text() ?? '';
     }
 
     /** Что недоступно в выбранном режиме звука — видно, но неактивно, с причиной. */
@@ -227,14 +274,15 @@ export class SettingsSheet {
             label.textContent = field.label;
             const input = document.createElement('input');
             Object.assign(input, {
-                id, name: field.key, type: 'text', className: 'text-input', maxLength: 32,
+                id, name: field.key, type: 'text', className: 'text-input', maxLength: field.maxLength ?? 32,
                 autocomplete: 'off', spellcheck: false, placeholder: field.placeholder ?? '',
             });
             input.setAttribute('autocapitalize', 'off');
             input.setAttribute('autocorrect', 'off');
+            if (field.inputMode) input.inputMode = field.inputMode;
             const status = document.createElement('p');
             status.className = 'field__hint field__status';
-            status.dataset.bind = 'key-status';
+            status.dataset.bind = 'status';
             status.setAttribute('aria-live', 'polite');
             root.append(label, input, status);
         } else if (field.type === 'switch') {

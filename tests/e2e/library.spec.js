@@ -1,5 +1,6 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { fixturePaths, importTracks, mockServices } from './helpers.js';
+import { fixturePaths, importTracks, mockServices, state } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
     await mockServices(page);
@@ -44,4 +45,36 @@ test('трек можно убрать с полки, полку — очист�
 
     await page.reload();
     await expect(page.locator('.empty')).toBeVisible();
+});
+
+test('«Удалить дубликаты»: копия уходит, играющий остаётся', async ({ page }) => {
+    const dialogs = [];
+    page.on('dialog', dialog => { dialogs.push(dialog.message()); dialog.accept(); });
+    await importTracks(page);
+
+    // тот же файл под другим именем — как второй раз прислали из Telegram
+    const [iskala] = fixturePaths(['zemfira-iskala.wav']);
+    await page.setInputFiles('.file-input', { name: 'Искала (1).wav', mimeType: 'audio/wav', buffer: await readFile(iskala) });
+    await expect(page.locator('.slot')).toHaveCount(9);
+    await expect(page.locator('.slot[aria-label^="Искала"]')).toHaveCount(2);
+
+    // играет именно копия — она и должна остаться
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => state(page)).toMatchObject({ playing: true, title: 'Искала' });
+
+    await page.getByRole('button', { name: 'Полка и настройки' }).click();
+    const sheet = page.locator('#library-sheet');
+    await sheet.getByRole('button', { name: 'Удалить дубликаты' }).click();
+    await expect(sheet.locator('[data-bind="dedupe"]')).toContainText('Убрано: 1 трек');
+    expect(dialogs.at(-1)).toContain('Найдено дубликатов: 1');
+    expect(dialogs.at(-1)).toContain('Искала — Земфира');
+
+    await expect(page.locator('.slot')).toHaveCount(8);
+    await expect(page.locator('.slot[aria-label^="Искала"]')).toHaveCount(1);
+    await expect(page.locator('.slot--current[aria-label^="Искала"]')).toHaveCount(1);
+    await expect.poll(() => state(page)).toMatchObject({ playing: true, title: 'Искала' });
+
+    await sheet.getByRole('button', { name: 'Удалить дубликаты' }).click();
+    await expect(sheet.locator('[data-bind="dedupe"]')).toHaveText('Дубликатов нет.');
 });

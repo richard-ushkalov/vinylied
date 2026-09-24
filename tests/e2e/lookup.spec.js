@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fixturePaths, importTracks, mockServices } from './helpers.js';
+import { fixturePaths, importTracks, mockServices, withAcoustIdKey } from './helpers.js';
 
 const song = (trackName, artistName, collectionName) => ({
     trackName, artistName, collectionName, artworkUrl100: 'https://example.test/art/100x100bb.jpg',
@@ -33,9 +33,7 @@ test('iTunes: подписи и обложка меняются — и у тре
 });
 
 test('AcoustID: трек узнаётся по звуку, обложка — из Cover Art Archive', async ({ page }) => {
-    await page.route('**/src/config.js', route => route.fulfill({
-        contentType: 'text/javascript', body: "export const ACOUSTID_KEY = 'test-key';",
-    }));
+    await withAcoustIdKey(page, 'test-key');
     let first = true;
     const calls = await mockServices(page, {
         acoustid: () => {

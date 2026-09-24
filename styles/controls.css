@@ -208,3 +208,8 @@
 }
 .switch input:checked { background: var(--fg); border-color: var(--fg); }
 .switch input:checked::after { transform: translateX(20px); background: var(--bg); }
+
+/* Малая пилюля — в строках списков. Зона нажатия та же, меньше только отступы. */
+.pill-button--small { padding: 0 14px; font-size: 14px; min-width: 88px; }
+.pill-button:disabled { opacity: .7; cursor: default; font-variant-numeric: tabular-nums; }
+.pill-button:disabled:active { background: transparent; color: inherit; border-color: var(--line); }
