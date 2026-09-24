@@ -173,11 +173,13 @@ class JobQueue:
         job.finished_at = self.clock()
 
     def _fail(self, job: Job, message: str, out_dir: Path) -> None:
-        job.state, job.stage, job.error = "error", "Ошибка", message
-        job.finished_at = self.clock()
+        # Сначала убрать за собой, потом объявить ошибку: кто увидел «error»,
+        # не должен застать недокачанную папку.
         with self._lock:
             if job.track_id not in self._files:
                 shutil.rmtree(out_dir, ignore_errors=True)
+            job.state, job.stage, job.error = "error", "Ошибка", message
+            job.finished_at = self.clock()
 
     # ── уборка ──────────────────────────────────────────────────
     def cleanup(self) -> None:
