@@ -12,6 +12,7 @@ import { Player } from './audio/Player.js';
 import { DownloadQueue } from './downloads/DownloadQueue.js';
 import { DownloadServer } from './downloads/DownloadServer.js';
 import { PendingTrack } from './downloads/PendingTrack.js';
+import { PreviewPlayer } from './downloads/PreviewPlayer.js';
 import { Database } from './library/Database.js';
 import { Inbox } from './library/Inbox.js';
 import { Library } from './library/Library.js';
@@ -97,6 +98,7 @@ settings.on('change', ({ key, value }) => {
 // ── скачивание со своего сервера ───────────────────────────────
 const downloadServer = new DownloadServer({ settings, fallback: DOWNLOAD_SERVER });
 const downloads = new DownloadQueue({ server: downloadServer });
+const previews = new PreviewPlayer({ server: downloadServer });
 
 // ── интерфейс ──────────────────────────────────────────────────
 const status = new StatusLine($('.status'));
@@ -129,6 +131,8 @@ const suggestions = new SearchSuggestions({
     root: $('.suggest'),
     server: downloadServer,
     downloads,
+    previews,
+    settings,
     // то, что уже стоит на полке, скачать не предлагаем
     isOnShelf: result => [...tracks.values()].some(track => sameSong(track, result)),
 });
@@ -198,7 +202,10 @@ dock.on('add', () => picker.open());
 dock.on('search', ({ query }) => {
     shelf.filter(query);
     suggestions.setQuery(query, { localMatches: shelf.visibleIds().length });
+    // поиск закрыли — предпрослушивание вместе с ним
+    if (!query) previews.stop();
 });
+dock.on('submit', () => suggestions.searchNow());
 dock.on('reveal', () => {
     const id = controller.current;
     if (!id) return;
@@ -223,6 +230,24 @@ librarySheet.on('clear', () => library.clear());
 // скачанный файл ложится в библиотеку под тем же id и занимает её место,
 // а обложку и названия потом, как всегда, доводит поиск метаданных.
 suggestions.on('download', ({ result }) => downloads.start(result));
+
+// Предпрослушивание и полка не звучат разом: включили одно — другое
+// на паузу. Системная панель на это время — у предпрослушивания.
+previews.on('state', ({ result, state }) => {
+    if (state === 'loading' && controller.playing) controller.pause();
+    if (state === 'playing' || state === 'paused') {
+        session.lend({
+            title: result.title,
+            artist: result.artist,
+            artwork: result.cover ? [{ src: result.cover }] : [],
+            play: () => previews.resume(),
+            pause: () => previews.pause(),
+            playing: state === 'playing',
+        });
+    }
+    if (state === 'stopped' || state === 'error') session.restore();
+});
+controller.on('change', ({ intent }) => { if (intent === 'playing') previews.stop(); });
 suggestions.on('reveal', ({ id }) => { if (tracks.has(id)) shelf.follow(id); });
 downloads.on('added', ({ id, result }) => {
     shelf.addPending(new PendingTrack(id, result));

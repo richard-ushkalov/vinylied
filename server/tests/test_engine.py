@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from vinilyed_server.config import Config
-from vinilyed_server.engine import STAGES, SpotdlEngine
+from vinilyed_server.engine import STAGES, SpotdlEngine, youtube_download_options
 
 try:
     import spotdl  # noqa: F401
@@ -74,6 +74,26 @@ class SpotdlContractTest(unittest.TestCase):
         self.assertIn(("Downloading", 55.0), seen)
         for message, _ in seen:
             self.assertIn(message, STAGES, f"новый этап spotDL: {message}")
+
+
+    def test_youtube_download_options_are_accepted_by_yt_dlp(self) -> None:
+        import yt_dlp
+
+        options = youtube_download_options(Path(self.tmp.name), lambda _: None, lambda _: None)
+        with yt_dlp.YoutubeDL(options) as ydl:
+            names = [type(pp).__name__ for stage in ydl._pps.values() for pp in stage]
+        self.assertEqual(sorted(names), sorted([
+            "FFmpegExtractAudioPP", "FFmpegThumbnailsConvertorPP", "FFmpegMetadataPP", "EmbedThumbnailPP",
+        ]))
+
+    def test_ytmusicapi_search_takes_our_arguments(self) -> None:
+        import inspect
+
+        from ytmusicapi import YTMusic
+
+        parameters = inspect.signature(YTMusic.search).parameters
+        self.assertIn("filter", parameters)
+        self.assertIn("limit", parameters)
 
 
 if __name__ == "__main__":

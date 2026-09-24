@@ -4,7 +4,8 @@
     add-code ИМЯ       выдать код доступа (печатается один раз)
     revoke ИМЯ         отозвать код
     codes              чьи коды есть
-    check "запрос"     проверить spotDL: найти и скачать первый результат
+    check "запрос"     проверить Spotify: найти и скачать первый результат
+    check --youtube "запрос"   то же для YouTube
     install-agent      автозапуск на Маке (launchd)
 """
 
@@ -43,12 +44,12 @@ def serve(config: Config, config_path: Path) -> None:
         jobs.stop()
 
 
-def check(config: Config, query: str) -> None:
-    """Живая проверка на Маке: Spotify, YouTube Music и ffmpeg — всё по-настоящему."""
+def check(config: Config, query: str, source: str) -> None:
+    """Живая проверка на Маке: Spotify или YouTube, yt-dlp и ffmpeg — всё по-настоящему."""
     engine = SpotdlEngine(config)
-    print(f"spotDL {engine.version() or 'не установлен'}")
+    print(f"spotDL {engine.version() or 'не установлен'}, источник: {source}")
     try:
-        results = engine.search(query, 3)
+        results = engine.search(source, query, 3)
     except EngineError as error:
         sys.exit(f"Поиск не удался: {error}")
     if not results:
@@ -61,7 +62,7 @@ def check(config: Config, query: str) -> None:
             print(f"\r  {stage:<16} {value * 100:5.1f}%", end="", flush=True)
 
         try:
-            path = engine.download(first.id, Path(folder), progress)
+            path = engine.download(source, first.id, Path(folder), progress)
         except EngineError as error:
             sys.exit(f"\nСкачать не вышло: {error}")
         print(f"\nГотово: {path.name}, {path.stat().st_size / 1_048_576:.1f} МБ")
@@ -102,6 +103,7 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser("codes", help="чьи коды есть")
     probe = commands.add_parser("check", help="найти и скачать первый результат")
     probe.add_argument("query")
+    probe.add_argument("--youtube", action="store_true", help="искать на YouTube, а не в Spotify")
     commands.add_parser("install-agent", help="автозапуск на Маке")
     args = parser.parse_args(argv)
 
@@ -123,7 +125,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "codes":
         print("\n".join(sorted(config.codes)) or "Кодов пока нет")
     elif args.command == "check":
-        check(config, args.query)
+        check(config, args.query, "youtube" if args.youtube else "spotify")
     elif args.command == "install-agent":
         if not args.config.exists():
             config.save(args.config)

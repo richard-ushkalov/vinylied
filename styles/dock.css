@@ -155,7 +155,7 @@
 .suggest__item {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     min-height: 60px;
     border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
 }
@@ -170,7 +170,31 @@
     background: var(--surface-raised);
 }
 .suggest__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.suggest__title,
 .suggest__meta { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.suggest__title { font-size: 15px; }
+/* названия роликов длинные — две строки, чтобы было из чего выбрать */
+.suggest__title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
 .suggest__meta { font-size: 13px; color: var(--muted); }
+
+/* вкладки «Spotify | YouTube» — наверху списка */
+.suggest__tabs { padding: 4px 0 6px; }
+.suggest__tabs[hidden] { display: none; }
+.suggest__tabs label { min-height: 36px; padding: 0 14px; }
+
+/* превью ролика — 16:9 и ссылкой на YouTube */
+.suggest__video { flex: none; display: block; border-radius: 3px; }
+.suggest__video .suggest__cover { width: 72px; height: auto; aspect-ratio: 16 / 9; }
+
+/* ▶ послушать: пока сервер ищет звук — мягко мигает */
+.suggest__listen[aria-pressed="true"] { color: var(--fg); }
+.suggest__listen--loading svg { animation: suggest-pulse 900ms ease-in-out infinite alternate; }
+@keyframes suggest-pulse { from { opacity: 1; } to { opacity: .3; } }
+:root[data-motion="reduce"] .suggest__listen--loading svg { animation: none; opacity: .5; }

@@ -48,6 +48,7 @@ const SHELL = [
     './src/downloads/DownloadQueue.js',
     './src/downloads/DownloadServer.js',
     './src/downloads/PendingTrack.js',
+    './src/downloads/PreviewPlayer.js',
     './src/library/Database.js',
     './src/library/Inbox.js',
     './src/library/Library.js',
