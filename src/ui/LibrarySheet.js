@@ -1,5 +1,6 @@
 import { Emitter } from '../core/Emitter.js';
 import { formatBytes, tracksLabel } from '../core/format.js';
+import { describeAcoustIdStatus } from './acoustidStatus.js';
 
 /**
  * Лист «Полка»: сколько треков и места, добавить, установить, порядок
@@ -19,9 +20,9 @@ export class LibrarySheet extends Emitter {
      *           lookup: import('../lookup/LookupQueue.js').LookupQueue,
      *           install: import('../pwa/InstallPrompt.js').InstallPrompt,
      *           controller: import('../playback/PlaybackController.js').PlaybackController,
-     *           canFingerprint: () => boolean }} deps
+     *           acoustId: import('../lookup/AcoustIdClient.js').AcoustIdClient }} deps
      */
-    constructor({ dialog, library, tracks, settings, lookup, install, controller, canFingerprint }) {
+    constructor({ dialog, library, tracks, settings, lookup, install, controller, acoustId }) {
         super();
         this.#dialog = dialog;
         this.library = library;
@@ -30,7 +31,7 @@ export class LibrarySheet extends Emitter {
         this.lookup = lookup;
         this.install = install;
         this.controller = controller;
-        this.canFingerprint = canFingerprint;
+        this.acoustId = acoustId;
         const $ = selector => /** @type {HTMLElement} */ (dialog.querySelector(selector));
         this.stats = $('[data-bind="stats"]');
         this.lookupText = $('[data-bind="lookup"]');
@@ -80,6 +81,7 @@ export class LibrarySheet extends Emitter {
         const refresh = () => this.#schedule();
         for (const type of ['added', 'updated', 'removed', 'cleared']) this.library.on(type, refresh);
         this.lookup.on('progress', () => this.#renderLookup());
+        this.acoustId.on('status', () => this.#renderLookup());
         this.install.on('change', () => this.#renderInstall());
         this.controller.on('change', ({ trackChanged }) => { if (trackChanged) refresh(); });
     }
@@ -117,9 +119,10 @@ export class LibrarySheet extends Emitter {
             return;
         }
         const { checked, total, running } = this.lookup.progress();
-        const parts = [`Проверено ${checked} из ${total}${running ? ' — идёт проверка…' : '.'}`];
-        if (!this.canFingerprint()) parts.push('Распознавание по звуку выключено: не задан ключ AcoustID.');
-        this.lookupText.textContent = parts.join(' ');
+        this.lookupText.textContent = [
+            `Проверено ${checked} из ${total}${running ? ' — идёт проверка…' : '.'}`,
+            describeAcoustIdStatus(this.acoustId.status),
+        ].join(' ');
     }
 
     #renderTracks() {

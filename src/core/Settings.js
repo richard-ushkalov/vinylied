@@ -4,7 +4,8 @@ import { LocalStore } from './LocalStore.js';
 /**
  * @typedef {{ type: 'enum', values: string[], default: string }
  *         | { type: 'number', min: number, max: number, default: number }
- *         | { type: 'boolean', default: boolean }} Field
+ *         | { type: 'boolean', default: boolean }
+ *         | { type: 'string', max: number, pattern: RegExp, default: string }} Field
  */
 
 /**
@@ -36,6 +37,8 @@ export const SCHEMA = {
     repeat:       { type: 'enum', values: ['all', 'one', 'off'], default: 'all' },
     // сеть
     onlineLookup: { type: 'boolean', default: true },
+    // пусто — встроенный ключ из src/config.js
+    acoustidKey:  { type: 'string', max: 32, pattern: /^[A-Za-z0-9]*$/, default: '' },
 };
 
 const VERSION = 1;
@@ -56,6 +59,10 @@ export const coerce = (field, value) => {
         }
         case 'boolean':
             return typeof value === 'boolean' ? value : field.default;
+        case 'string': {
+            const text = typeof value === 'string' ? value.trim() : null;
+            return text !== null && text.length <= field.max && field.pattern.test(text) ? text : field.default;
+        }
     }
 };
 

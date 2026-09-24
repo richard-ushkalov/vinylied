@@ -79,12 +79,21 @@ const resolver = new MetadataResolver({
     coverArt: new CoverArtArchive(),
 });
 const lookup = new LookupQueue({ library, resolver, settings });
+// Ключ из настроек важнее встроенного: его можно поправить прямо на
+// телефоне, без выкладки. Смена ключа — повод перепроверить треки,
+// которые AcoustID ещё не видел (это решает LookupQueue.needs).
+acoustId.setKey(settings.get('acoustidKey') || ACOUSTID_KEY);
+settings.on('change', ({ key, value }) => {
+    if (key !== 'acoustidKey') return;
+    acoustId.setKey(value || ACOUSTID_KEY);
+    lookup.schedule(300);
+});
 
 // ── интерфейс ──────────────────────────────────────────────────
 const status = new StatusLine($('.status'));
 const scroller = new ShelfScroller({
     viewport: $('.scene'),
-    list: $('.list'),
+    probe: $('.shelf-probe'),
     // прокрутка = перемотка, поэтому прикрываем фильтр, как на пульте
     onScrub: amount => controller.scrub(amount),
 });
@@ -102,10 +111,9 @@ const picker = new FilePicker({ input: $('.file-input'), target: document.body }
 const install = new InstallPrompt({ platform });
 const librarySheet = new LibrarySheet({
     dialog: $('#library-sheet'),
-    library, tracks, settings, lookup, install, controller,
-    canFingerprint: () => resolver.canFingerprint,
+    library, tracks, settings, lookup, install, controller, acoustId,
 });
-const settingsSheet = new SettingsSheet({ dialog: $('#settings-sheet'), settings, player, platform });
+const settingsSheet = new SettingsSheet({ dialog: $('#settings-sheet'), settings, player, platform, acoustId });
 const spinner = new DiscSpinner({
     speed: () => controller.speed(),
     disc: () => shelf.discOf(controller.current),
@@ -134,13 +142,17 @@ const syncDockCover = () => {
 };
 scroller.on('move', syncDockCover);
 
+// Пока идёт запуск, состояние восстанавливается, а не меняется: конверт
+// «продолжить с места» должен сразу стоять по центру, без анимаций.
+let booting = true;
+
 controller.on('change', ({ current, previous, intent, trackChanged }) => {
     // ручная смена трека: полоса плавно отматывается к началу
     if (trackChanged) progress.rewind();
-    shelf.setCurrent(current, previous);
+    shelf.setCurrent(current, previous, { instant: booting });
     dock.setTrack(controller.track);
     dock.setPlaying(intent === 'playing');
-    if (trackChanged && current) shelf.centerOn(current);
+    if (trackChanged && current) shelf.follow(current, { instant: booting });
     syncDockCover();
     frames.once();
 });
@@ -166,7 +178,7 @@ dock.on('reveal', () => {
     const id = controller.current;
     if (!id) return;
     if (shelf.isFiltered(id)) dock.closeSearch();
-    shelf.centerOn(id);
+    shelf.follow(id);
 });
 
 empty.on('add', () => picker.open());
@@ -307,12 +319,14 @@ const start = async () => {
     const initial = records.map(record => new Track(record));
     for (const track of initial) tracks.set(track.id, track);
     empty.toggle(!initial.length);
-    await shelf.add(initial);
 
-    // «Продолжить с места»: трек на вертушке, один тап — и дальше
+    // «Продолжить с места»: трек на вертушке, один тап — и дальше.
+    // Полка сразу встаёт на него и проявляется от него же.
     const saved = resume.read();
-    if (saved && tracks.has(saved.id)) controller.cue(saved.id, saved.position);
-    else if (initial.length) shelf.centerOn(initial[0].id, { instant: true });
+    const resumeId = saved && tracks.has(saved.id) ? saved.id : null;
+    await shelf.add(initial, { focus: resumeId });
+    if (resumeId) controller.cue(resumeId, saved.position);
+    booting = false;
 
     lookup.start();
 

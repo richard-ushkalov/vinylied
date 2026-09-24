@@ -1,15 +1,31 @@
 /* ── полка ─────────────────────────────────────────────────────── */
 
+/* Список — точка в центре сцены, а не колонка: где стоит каждый конверт,
+   считает ShelfLayout, и ShelfScroller пишет слоту один transform.
+   Раскладка страницы при прокрутке не меняется вовсе. */
 .list {
-    /* offsetParent для слотов: scroll.js меряет их offsetTop от списка */
-    position: relative;
-    list-style-type: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 0;
+    margin: 0;
     padding: 0;
-
-    display: flex;
-    flex-direction: column;
+    list-style-type: none;
 
     transform-style: preserve-3d;
+}
+
+/* Пробник: его ширина — --vinyl-size в пикселях (он зависит от размера
+   сцены и настройки «Размер конвертов»). Его и меряет ShelfScroller. */
+.shelf-probe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--vinyl-size);
+    height: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .list:focus-visible { outline: none; }
@@ -18,7 +34,11 @@
     outline-offset: 4px;
 }
 
-/* ── слот: место в стопке ─────────────────────────────────────── */
+/* ── слот: место в стопке ─────────────────────────────────────────
+   Высоту места в стопке (у текущего — целая обложка, он стоит; у
+   отсеянного — ноль) ведёт модель, а не отступы: раньше их анимировал
+   CSS, а камера догоняла — отсюда и «не успевает», и «не по центру».
+   Сам слот — полоска толщиной в конверт, центр которой в точке y. */
 .slot {
     --vinyl-thickness: calc(var(--vinyl-size) / 20);
     --vinyl-half-thickness: calc(var(--vinyl-thickness) / 2);
@@ -26,26 +46,18 @@
     user-select: none;
     -webkit-user-select: none;
 
-    height: calc(var(--vinyl-thickness) * 3);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--vinyl-thickness);
+    margin-top: calc(var(--vinyl-thickness) / -2);
 
     display: flex;
     justify-content: center;
     align-items: center;
 
-    padding-block: calc(var(--vinyl-size) / 7);
-
     transform-style: preserve-3d;
-
-    transition: padding-block var(--dur-base) var(--ease-out);
-}
-
-/* Текущий трек — и когда играет, и когда на паузе. Вид один и тот же,
-   меняется только вращение диска: закрывать конверт обратно незачем,
-   иначе по стопке не понять, какой трек сейчас выбран.
-   Отступы больше обычных, потому что конверт ВСТАЁТ вертикально
-   (rotateX(-90deg)) и занимает по высоте уже не толщину, а всю обложку. */
-.slot--current {
-    padding-block: calc(var(--vinyl-size) / 2);
 }
 
 /* Далеко за экраном — не рисуем вообще. Классом, а не inline-стилем:
@@ -107,12 +119,11 @@
     transition: transform var(--dur-slow) var(--ease-dive);
 }
 
-/* Место закрывается ПОСЛЕ ухода и БЕЗ перехода. Анимировать height —
-   это пересчёт раскладки каждый кадр, а скроллер в том же кадре её читает. */
+/* Отсеянный и уже схлопнутый моделью — не рисуем вовсе (класс ставит
+   ShelfScroller, когда место конверта сошло на нет). */
 .slot--hidden {
-    height: 0;
-    padding-block: 0;
     visibility: hidden;
+    pointer-events: none;
 }
 
 /* Меньше движения: конверты не ныряют — просто гаснут на месте */

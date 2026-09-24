@@ -3,14 +3,19 @@
  *
  * Стратегия для своих файлов — сначала сеть (с таймаутом), потом кеш.
  * Так правки в коде подхватываются без ручного поднятия версии кеша,
- * а без сети всё открывается из кеша. Чужие адреса (iTunes, AcoustID,
+ * а без сети всё открывается из кеша.
+ *
+ * «Сеть» — именно сеть: запрос идёт с cache: 'no-cache', то есть с
+ * перепроверкой у сервера. Обычный fetch берёт ответ из HTTP-кеша
+ * браузера, а GitHub Pages разрешает держать файлы там 10 минут — и после
+ * выкладки телефон ещё долго получал старый config.js. Чужие адреса (iTunes, AcoustID,
  * обложки) идут мимо: поиск обложек и так работает только онлайн.
  *
  * Список SHELL обновляется командой `npm run precache`; unit-тест
  * проверяет, что в нём нет пропусков, — иначе без сети не хватило бы
  * модуля, который браузер при первом заходе ещё не успел закешировать.
  */
-const CACHE = 'vinilyed-shell-v1';
+const CACHE = 'vinilyed-shell-v2';
 const INBOX = 'vinilyed-inbox';     // то же имя — в src/library/Inbox.js
 const TIMEOUT = 3000;
 
@@ -74,7 +79,9 @@ const SHELL = [
     './src/ui/SettingsSheet.js',
     './src/ui/StatusLine.js',
     './src/ui/Theme.js',
+    './src/ui/acoustidStatus.js',
     './src/ui/shelf/Shelf.js',
+    './src/ui/shelf/ShelfLayout.js',
     './src/ui/shelf/ShelfScroller.js',
     './src/ui/shelf/VinylView.js',
     './styles/base.css',
@@ -128,7 +135,11 @@ async function networkFirst(event, request) {
     // любая навигация внутри приложения — это index.html (share, ?параметры)
     const key = request.mode === 'navigate' ? './index.html' : request;
 
-    const network = fetch(request).then(response => {
+    // Навигационный запрос нельзя пересобрать с другими опциями — берём адрес
+    const network = (request.mode === 'navigate'
+        ? fetch(request.url, { cache: 'no-cache', credentials: 'same-origin' })
+        : fetch(request, { cache: 'no-cache' })
+    ).then(response => {
         if (response.ok && response.type === 'basic') {
             const copy = response.clone();
             event.waitUntil(cache.put(key, copy));

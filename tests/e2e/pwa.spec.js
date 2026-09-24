@@ -19,7 +19,8 @@ test('без сети приложение открывается, полка н
     await page.goto('/');
     await page.evaluate(() => navigator.serviceWorker.ready);
     await expect.poll(() => page.evaluate(async () => {
-        const cache = await caches.open('vinilyed-shell-v1');
+        const name = (await caches.keys()).find(key => key.startsWith('vinilyed-shell'));
+        const cache = await caches.open(/** @type {string} */ (name));
         return (await cache.keys()).map(request => new URL(request.url).pathname);
     })).toEqual(expect.arrayContaining(['/vendor/music-metadata.js', '/src/main.js', '/styles/vinyl.css']));
 
