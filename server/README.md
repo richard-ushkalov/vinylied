@@ -25,26 +25,46 @@
 
 ## Установка на Мак
 
-Нужен [Homebrew](https://brew.sh).
+Нужен [Homebrew](https://brew.sh) — если его нет, поставьте командой с сайта.
+Дальше две команды:
 
 ```sh
-brew install python@3.12 ffmpeg deno cloudflared
 git clone https://github.com/richard-ushkalov/vinylied.git ~/vinylied
-cd ~/vinylied/server
-python3.12 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+~/vinylied/server/setup.sh
 ```
+
+Скрипт поставит недостающее (`python@3.12`, `ffmpeg`, `deno`, `cloudflared`),
+соберёт окружение Python со spotDL и добавит команду `vinilyed-server` —
+она работает из любой папки. Повторный запуск ничего не ломает и
+обновляет spotDL; код обновить — `git -C ~/vinylied pull`, потом снова
+`setup.sh`.
+
+> Команды `python` на Маке нет, а у системного `python3` нет spotDL.
+> Всё делается через `vinilyed-server`.
 
 `deno` нужен yt-dlp внутри spotDL: без него YouTube всё чаще отвечает
 «подтвердите, что вы не робот».
 
+<details>
+<summary>Без скрипта</summary>
+
+```sh
+brew install python@3.12 ffmpeg deno cloudflared
+cd ~/vinylied/server
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m vinilyed_server codes   # вместо vinilyed-server — из папки server
+```
+
+</details>
+
 ### Коды доступа
 
 ```sh
-.venv/bin/python -m vinilyed_server add-code mama     # печатает код один раз
-.venv/bin/python -m vinilyed_server add-code richard
-.venv/bin/python -m vinilyed_server codes             # чьи коды есть
-.venv/bin/python -m vinilyed_server revoke mama       # отозвать
+vinilyed-server add-code mama     # печатает код один раз
+vinilyed-server add-code richard
+vinilyed-server codes             # чьи коды есть
+vinilyed-server revoke mama       # отозвать
 ```
 
 Код вписывается в приложении: «⋯» → «Настройки» → «Скачивание».
@@ -53,7 +73,7 @@ python3.12 -m venv .venv
 ### Проверка
 
 ```sh
-.venv/bin/python -m vinilyed_server check "Кино Группа крови"
+vinilyed-server check "Кино Группа крови"
 ```
 
 Найдёт трек в Spotify, скачает первый результат во временную папку и
@@ -62,7 +82,7 @@ python3.12 -m venv .venv
 ### Автозапуск
 
 ```sh
-.venv/bin/python -m vinilyed_server install-agent
+vinilyed-server install-agent
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.vinilyed.server.plist
 ```
 
@@ -135,7 +155,7 @@ HTTPS настоящий — работает и на iPhone.
   Client ID и Client Secret в `spotify_client_id` и `spotify_client_secret`,
   перезапустите сервер.
 - **«трек не нашёлся на YouTube Music» или YouTube просит подтвердить, что вы не робот.**
-  Обновите yt-dlp (`.venv/bin/pip install -U yt-dlp`) и проверьте, что стоит `deno`.
+  Обновите yt-dlp (`~/vinylied/server/.venv/bin/pip install -U yt-dlp`) и проверьте, что стоит `deno`.
 - **Приложение пишет «Код доступа не подошёл».** `codes` покажет, чьи коды
   есть; выдайте новый через `add-code`.
 
