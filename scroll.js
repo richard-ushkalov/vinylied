@@ -224,6 +224,11 @@ export const createScroll = (viewport, { onScrub } = {}) => {
     let layoutTimer = 0;
 
     const observer = new ResizeObserver(() => {
+        // Пересчитать СРАЗУ, а не только через паузу. Отсечение за экраном
+        // держит inline visibility на слоте, и снять его может лишь новый
+        // проход: без этого конверт, съехавший в кадр после поиска, так
+        // и оставался невидимым.
+        draw();
         clearTimeout(layoutTimer);
         layoutTimer = setTimeout(() => centerOn(currentIndex), 400);
     });
@@ -231,7 +236,17 @@ export const createScroll = (viewport, { onScrub } = {}) => {
     const observeAll = () => {
         observer.disconnect();
         observer.observe(list);
-        for (const slot of list.children) observer.observe(slot);
+
+        for (const slot of list.children) {
+            observer.observe(slot);
+            // Сбрасываем отсечение НАСИЛЬНО. Оно живёт в inline-стиле, и снять
+            // его может только проход updateSlots — а он считает по текущей
+            // раскладке, которая после поиска ещё не устоялась. Слот, уже
+            // подходящий под запрос, так и оставался невидимым.
+            // Лишние нарисованные слоты дешевле невидимых нужных.
+            slot.style.visibility = '';
+            delete slot.dataset.far;
+        }
 
         focusedIndex = -1;   // состав полки сменился — прежний индекс не значит ничего
         draw();              // сразу отметить ближайшего, не дожидаясь прокрутки

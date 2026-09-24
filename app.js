@@ -114,6 +114,7 @@ const HUNT_EVERY = 60_000;
 const MAX_TRIES = 3;
 
 const SWAP_MS = 400;   // столько же, сколько --animation-base-time
+const HIDE_AT = 640;   // чуть позже, чем догасает грань (520мс)
 
 // Конверт ныряет вниз, меняем всё разом, конверт возвращается.
 const swapCover = (element, track, found, palette) => {
@@ -182,26 +183,38 @@ search.addEventListener('input', () => {
     const query = search.value.trim().toLowerCase();
     let changed = false;
 
-    for (const { track, element } of items) {
+    items.forEach(({ track, element }, index) => {
         const gone = Boolean(query) && !matches(track, query);
-        if (gone === element.classList.contains('slot--gone')) continue;
+        if (gone === element.classList.contains('slot--gone')) return;
         changed = true;
+
+        clearTimeout(element._hide);    // мог остаться от прошлой буквы
 
         if (gone) {
             element.classList.add('slot--gone');
-            // Место закрываем, только когда конверт уже ушёл вниз, —
-            // и одним разом, а не покадрово.
-            setTimeout(() => {
+            // Место закрываем, когда конверт УЖЕ ушёл и догас, и лесенкой:
+            // если схлопнуть все высоты разом, полка дёргается, переставляясь.
+            element._hide = setTimeout(() => {
                 if (element.classList.contains('slot--gone')) element.classList.add('slot--hidden');
-            }, SWAP_MS);
+            }, HIDE_AT + index * 50);
         } else {
             element.classList.remove('slot--hidden');
             void element.offsetWidth;    // вернуть высоту ДО того, как включится переход
             element.classList.remove('slot--gone');
         }
-    }
+    });
 
-    if (changed) setTimeout(() => scroll.refresh(), SWAP_MS + 40);
+    if (!changed) return;
+    scroll.refresh();     // сразу: снять отсечение с тех, кто снова нужен
+
+    setTimeout(() => {
+        scroll.refresh();
+        // И подвести полку к первому найденному. Без этого магнит доводил
+        // до прежнего индекса — а тот мог сам отсеяться, и найденный конверт
+        // оставался за экраном.
+        const first = items.findIndex(({ element }) => !element.classList.contains('slot--gone'));
+        if (first >= 0) scroll.centerOn(first);
+    }, HIDE_AT + items.length * 50 + 120);
 });
 
 // рисует по ФАКТУ, ничего не решает и никого не двигает
