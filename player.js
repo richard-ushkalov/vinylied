@@ -38,12 +38,27 @@ export const createPlayer = () => {
 
     const emit = type => bus.dispatchEvent(new Event(type));
 
+    // Звук идёт не в динамики напрямую, а через <audio>.
+    // Единственная причина: Safari и Firefox показывают Now Playing только
+    // когда на странице есть медиаэлемент, который реально играет. Беззвучная
+    // подпорка рядом их не убеждала — нужен настоящий источник.
+    const speaker = new Audio();
+    speaker.autoplay = true;
+    // В документе, а не просто в памяти: системная панель привязывается
+    // к элементу страницы, оторванный от дерева её может не получить.
+    speaker.hidden = true;
+    document.body.append(speaker);
+
     const ensure = async () => {
         if (!ctx) {
             ctx = new AudioContext();
-            chain = createVinylChain(ctx);
+            const out = ctx.createMediaStreamDestination();
+            chain = createVinylChain(ctx, out);
+            speaker.srcObject = out.stream;
         }
         if (ctx.state === 'suspended') await ctx.resume();
+        // srcObject не автостартует так же надёжно, как src
+        if (speaker.paused) await speaker.play().catch(() => {});
     };
 
     /** снимает текущий источник без всяких плавностей */

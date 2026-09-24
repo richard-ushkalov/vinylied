@@ -65,11 +65,17 @@ export const createScroll = (viewport, { onScrub } = {}) => {
         speed += (moved - speed) * 0.25;
         const rush = Math.min(1, speed / 26);     // 0 — стоим, 1 — быстро
 
+        // ЧИТАЕМ всё сразу и только потом ПИШЕМ. Раньше цикл чередовал
+        // getBoundingClientRect и запись стиля — а это заставляет браузер
+        // пересчитывать раскладку на КАЖДОМ слоте: двадцать пластинок =
+        // двадцать пересчётов в кадр вместо одного. Отсюда и подтормаживало.
         const center = getCenter();
+        const rects = slots.map(slot => slot.getBoundingClientRect());
+
         let nearest = 0, best = Infinity;
 
         slots.forEach((slot, index) => {
-            const rect = slot.getBoundingClientRect();
+            const rect = rects[index];
             const offset = rect.top + rect.height / 2 - center;
 
             const distance = Math.abs(offset);
@@ -88,8 +94,11 @@ export const createScroll = (viewport, { onScrub } = {}) => {
 
             // рыбий глаз: чем дальше от центра, тем сильнее наклон и утопание
             const t = Math.max(-1, Math.min(1, offset / FISH_SPREAD));
-            slot.style.transform =
+            // Запись в style невалидирует стиль элемента, даже если строка
+            // та же самая. Стоим на месте — не трогаем вовсе.
+            const transform =
                 `translateZ(${-Math.abs(t) * FISH_DEPTH}px) rotateX(${-t * FISH_ANGLE}deg)`;
+            if (slot.style.transform !== transform) slot.style.transform = transform;
 
             // у краёв размывает всегда, в движении — ещё и по центру
             const blur = Math.max(0, (Math.abs(t) + rush * 0.9) * MAX_BLUR - 0.4);
@@ -103,8 +112,14 @@ export const createScroll = (viewport, { onScrub } = {}) => {
             // .disc сюда НЕ входит по тому же правилу: внутри у него своя
             // этикетка, и filter отобрал бы у неё 3D-контекст.
             // Возле центра свойство СНИМАЕМ совсем, а не ставим blur(0).
-            for (const face of slot.querySelectorAll('.vinyl__box > *')) {
-                face.style.filter = value;
+            // Размываем ТОЛЬКО лицевую грань и корешок. Раньше filter считался
+            // для всех шести — вчетверо больше работы на каждый слот в кадре,
+            // а четыре задние грани почти не видны. Список граней запоминаем
+            // на элементе: querySelectorAll каждый кадр тоже не бесплатен.
+            if (slot.dataset.blur !== value) {
+                slot.dataset.blur = value;
+                slot._faces ??= slot.querySelectorAll('.vinyl__frontside, .vinyl__side');
+                for (const face of slot._faces) face.style.filter = value;
             }
         });
 

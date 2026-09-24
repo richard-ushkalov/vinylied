@@ -11,7 +11,12 @@ const OPEN_HZ  = 11000;   // фильтр открыт — обычное зву
 const SHUT_HZ  = 300;     // фильтр закрыт — глухо, как при прокрутке
 const SCRUB_Q  = 6;       // подъём на срезе: тот самый диджейский призвук
 
-export const createVinylChain = ctx => {
+/**
+ * out — куда петь. По умолчанию динамики, но плеер подсовывает сюда
+ * MediaStreamDestination: только так у страницы появляется НАСТОЯЩИЙ
+ * медиаэлемент, а без него Safari и Firefox не показывают Now Playing.
+ */
+export const createVinylChain = (ctx, out = ctx.destination) => {
     const highpass = ctx.createBiquadFilter();
     highpass.type = 'highpass';
     highpass.frequency.value = 55;          // глубокого низа на пластинке нет
@@ -29,7 +34,7 @@ export const createVinylChain = ctx => {
     }
     shaper.curve = curve;
 
-    highpass.connect(lowpass).connect(shaper).connect(ctx.destination);
+    highpass.connect(lowpass).connect(shaper).connect(out);
 
     // потрескивание: редкие щелчки, синтезированные здесь же
     const buffer = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
@@ -43,7 +48,7 @@ export const createVinylChain = ctx => {
 
     const crackle = ctx.createGain();
     crackle.gain.value = 0;
-    noise.connect(crackle).connect(ctx.destination);
+    noise.connect(crackle).connect(out);
     noise.start();
 
     const ramp = (to, seconds) => {

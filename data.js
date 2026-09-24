@@ -96,21 +96,66 @@ const makeCover = ({ album, artist }) => {
  * ВАЖНО, что это значит: наружу, на серверы Apple, уходят исполнитель
  * и название альбома из его файлов. Поэтому зовётся только для треков,
  * где своей картинки нет, и не больше трёх попыток на трек.
+ *
+ * Отдельная беда — мусорные теги. iTunes на ЛЮБОЙ запрос вернёт свой лучший
+ * вариант и никогда не скажет «не нашёл»: спросишь «asdf» — получишь чью-то
+ * случайную обложку и повесишь её на конверт как настоящую. Поэтому ответ
+ * обязательно сверяем, а если теги никуда не годятся — пробуем имя файла.
  */
-export const findCover = async ({ artist, album }) => {
-    if (!album || album === 'Без альбома') return null;
+const norm = text => (text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
-    const term = encodeURIComponent(`${artist} ${album}`.trim());
-    const url = `https://itunes.apple.com/search?term=${term}&entity=album&limit=1`;
+// «то же самое» — когда одна строка содержит другую: «Trilogy» против
+// «Trilogy (Deluxe)» пройдёт, «Trilogy» против «Thriller» — нет.
+const same = (a, b) => {
+    const x = norm(a), y = norm(b);
+    return Boolean(x && y) && (x.includes(y) || y.includes(x));
+};
 
+const ask = async query => {
+    if (!query?.trim()) return null;
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query.trim())}`
+              + '&entity=album&limit=1';
     try {
         const response = await fetch(url);
         if (!response.ok) return null;
         const { results } = await response.json();
-        const art = results?.[0]?.artworkUrl100;
-        // в ответе миниатюра 100×100; размер зашит прямо в адрес
-        return art ? art.replace(/\/\d+x\d+bb\./, '/600x600bb.') : null;
+        return results?.[0] ?? null;
     } catch { return null; }   // нет сети — не беда, останется своя обложка
+};
+
+// в ответе миниатюра 100×100; размер зашит прямо в адрес
+const artwork = album => album.artworkUrl100?.replace(/\/\d+x\d+bb\./, '/600x600bb.') ?? null;
+
+export const findCover = async ({ artist, album, file }) => {
+    // 1. по тегам — и обязательно сверяем, что вернули именно этот альбом
+    if (album && album !== 'Без альбома') {
+        const found = await ask(`${artist} ${album}`);
+        if (found && same(album, found.collectionName)) {
+            return { url: artwork(found), artist: found.artistName, album: found.collectionName };
+        }
+    }
+
+    // 2. теги не сошлись — пробуем имя файла, сняв расширение и номер дорожки
+    const name = file?.replace(/\.[^.]+$/, '').replace(/^\d+[\s._-]*/, '');
+    if (!name) return null;
+
+    const found = await ask(name);
+    // Сверять тут не с чем, кроме самого имени: принимаем ответ, только если
+    // исполнитель или альбом из него в этом имени действительно встречаются.
+    if (found && (same(name, found.artistName) || same(name, found.collectionName))) {
+        // сюда попадаем, только когда теги не сошлись — значит им и верить
+        // незачем: подписи берём из ответа сайта
+        return { url: artwork(found), artist: found.artistName, album: found.collectionName,
+                 viaFile: true };
+    }
+    return null;
+};
+
+/** Цвет корешка по адресу картинки. Для найденных в сети обложек — тем же
+ *  разбором, что и для встроенных: у mzstatic CORS открыт, холст не портится. */
+export const paletteFrom = async url => {
+    try { return await extractCover(await (await fetch(url)).blob()); }
+    catch { return null; }
 };
 
 export const readTrack = async file => {
@@ -133,6 +178,7 @@ export const readTrack = async file => {
         title,
         album,
         artist,
+        file: file.name,               // запасной запрос, когда теги мусорные
         hasCover: Boolean(coverUrl),   // false — обложка нарисована нами
         tries: 0,                      // сколько раз искали её в сети
         // Своей обложки нет — рисуем запасную. Цвет корешка при этом

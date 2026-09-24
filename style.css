@@ -129,8 +129,7 @@ button, select, input, textarea { font: inherit; }
 
     transform-style: preserve-3d;
 
-    transition: padding-block var(--animation-base-time) var(--fade-out),
-                height var(--animation-base-time) var(--fade-out);
+    transition: padding-block var(--animation-base-time) var(--fade-out);
 }
 
 /* Текущий трек — и когда играет, и когда на паузе. Вид один и тот же,
@@ -148,13 +147,13 @@ button, select, input, textarea { font: inherit; }
    строк, ни специфичность на результат не влияют.             */
 
 @media (hover: hover) {
-    .slot:not(.slot--current, .slot--focused, .slot--gone, .slot--swap):hover .vinyl {
+    .slot:not(.slot--current, .slot--focused, .slot--gone, .slot--swap, .slot--loading):hover .vinyl {
         transform: translateZ(calc(var(--vinyl-size) / 4));
     }
 }
 
 /* ближайший к центру — слегка подан вперёд, плашмя */
-.slot--focused:not(.slot--current, .slot--gone, .slot--swap) .vinyl {
+.slot--focused:not(.slot--current, .slot--gone, .slot--swap, .slot--loading) .vinyl {
     transform: translateZ(calc(var(--vinyl-size) / 4));
 }
 
@@ -178,18 +177,40 @@ button, select, input, textarea { font: inherit; }
 /* Специфичность здесь не случайность: :not() добавляет вес своего
    аргумента, поэтому .slot--focused:not(.slot--current) .vinyl весит 0-3-0
    и побило бы эти правила при любом порядке строк. Поэтому --gone и --swap
-   перечислены в его :not() — селекторы взаимоисключающие, и спорить им не о чем. */
+   перечислены в его :not() — селекторы взаимоисключающие. */
 
-/* отсеян поиском: улетает и забирает своё место с собой */
-.slot--gone {
+/* Отсеянные уходят ВНИЗ и гаснут. Прозрачность вешаем на грани, а не на
+   .slot и не на .vinyl: opacity меньше единицы принудительно даёт
+   transform-style: flat, и коробка схлопнулась бы — ровно тот баг,
+   из-за которого пропадали обложки. Грани плоские, им терять нечего. */
+.slot--gone { pointer-events: none; }
+
+/* и то же самое, пока полка ещё грузится: конверт ждёт ниже кадра,
+   пока обложка не декодирована и scroll.js не разложил стопку */
+.slot--gone .vinyl,
+.slot--swap .vinyl,
+.slot--loading .vinyl { transform: translateY(160px); }
+
+.slot--gone .vinyl__box > *,
+.slot--swap .vinyl__box > *,
+.slot--loading .vinyl__box > * { opacity: 0; }
+
+/* Уход и приход длиннее обычной смены состояния: тут важна плавность,
+   а не отзывчивость. Правило действует, пока класс висит, — то есть
+   на уходе; возвращается конверт базовым переходом .vinyl. */
+.slot--gone .vinyl,
+.slot--swap .vinyl,
+.slot--loading .vinyl {
+    transition: transform 620ms cubic-bezier(.32, 0, .24, 1);
+}
+
+/* Место закрывается ПОСЛЕ ухода и БЕЗ перехода. Анимировать height —
+   это пересчёт раскладки каждый кадр, а scroll.js в том же кадре её читает;
+   отсюда и дёрганье, и повисшие сбоку конверты. */
+.slot--hidden {
     height: 0;
     padding-block: 0;
-    pointer-events: none;
 }
-.slot--gone .vinyl { transform: translateX(-140%); }
-
-/* обложка нашлась: конверт уходит и возвращается уже с новой */
-.slot--swap .vinyl { transform: translateX(-140%); }
 
 
 /* ── коробка ──────────────────────────────────────────────── */
@@ -213,6 +234,7 @@ button, select, input, textarea { font: inherit; }
     top: 50%;
 
     transform-style: preserve-3d;
+    transition: opacity 520ms var(--fade-out);
 }
 
 .vinyl__frontside,
@@ -426,59 +448,6 @@ button, select, input, textarea { font: inherit; }
                rotateY(90deg)
                translateZ(calc(var(--vinyl-size) / 2));
 }
-
-/* ── игла ──────────────────────────────────────────────────────
-   Шарнир слева сверху, вне пластинки; брусок тянется вправо, головка
-   на дальнем конце. Угол считает app.js из позиции в треке: 77° —
-   внешняя дорожка, 54° — у этикетки. Числа не на глаз: при шарнире
-   внешняя дорожка, 54° — край этикетки. Вывод чисел — в app.js. */
-.tonearm {
-    display: none;
-
-    width: calc(var(--vinyl-size) * 0.72);
-    height: 1px;
-
-    position: absolute;
-    left: 50%;
-    top: 50%;
-
-    background: #fff;
-
-    /* Шарнир — левый край бруска, он же центр вращения. translateZ
-       ПОСЛЕ rotateX поднимает иглу над пластинкой: они компланарны,
-       и без явного зазора порядок отрисовки решал бы движок. */
-    /* Порядок здесь не косметика. Сначала rotateX кладёт систему координат
-       в плоскость пластинки, и только ПОТОМ смещаем шарнир — иначе его
-       -0.44 отсчитывались бы вверх по вертикальной плоскости конверта,
-       и игла висела бы над диском, а не лежала на нём. */
-    transform-origin: 0 50%;
-    transform: rotateX(90deg)
-               translateZ(6px)
-               translate(calc(var(--vinyl-size) * -0.52), calc(var(--vinyl-size) * -0.44))
-               rotate(var(--arm, 77deg));
-}
-
-.slot--current .tonearm,
-.slot--recent .tonearm { display: block; }
-
-.tonearm__pivot,
-.tonearm__head {
-    position: absolute;
-    top: 50%;
-    background: #fff;
-}
-.tonearm__pivot {
-    left: 0;
-    width: 7px; height: 7px;
-    transform: translate(-50%, -50%);
-}
-/* головка — та же палочка, что и на полосе прокрутки */
-.tonearm__head {
-    right: 0;
-    width: 3px; height: 7px;
-    transform: translate(50%, -50%);
-}
-
 
 /* ── пластинка ─────────────────────────────────────────────── */
 .disc {
