@@ -95,6 +95,22 @@
 .field__value { color: var(--muted); font-variant-numeric: tabular-nums; }
 .field__hint { font-size: 12px; line-height: 1.4; color: var(--muted); }
 
+/* текстовое поле (ключ AcoustID) — капсула в 1px, как поиск */
+.text-input {
+    width: 100%;
+    height: var(--tap);
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    /* 16px, не меньше: иначе iOS приближает страницу при фокусе */
+    font: 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .06em;
+}
+.text-input::placeholder { color: var(--faint); letter-spacing: 0; font-family: var(--font); }
+.text-input:focus { border-color: var(--line-strong); }
+.field__status { color: var(--fg); }
+
 /* ползунок — та же линия в 1px и та же палочка, что у прогресса */
 .range {
     --fill: 50%;

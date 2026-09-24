@@ -1,7 +1,9 @@
+import { describeAcoustIdStatus } from './acoustidStatus.js';
+
 /**
- * @typedef {{ key: string, label: string, type: 'range' | 'switch' | 'choice',
+ * @typedef {{ key: string, label: string, type: 'range' | 'switch' | 'choice' | 'text',
  *             options?: [string, string][], hint?: string, needs?: 'effects' | 'volume',
- *             hidden?: boolean }} FieldSpec
+ *             placeholder?: string, hidden?: boolean }} FieldSpec
  */
 
 /**
@@ -14,20 +16,23 @@ export class SettingsSheet {
     #settings;
     #player;
     #platform;
+    #acoustId;
     /** @type {Map<string, { field: FieldSpec, root: HTMLElement }>} */
     #fields = new Map();
 
     /**
      * @param {{ dialog: HTMLDialogElement, settings: import('../core/Settings.js').Settings,
      *           player: import('../audio/Player.js').Player,
-     *           platform: import('../core/platform.js').Platform }} deps
+     *           platform: import('../core/platform.js').Platform,
+     *           acoustId: import('../lookup/AcoustIdClient.js').AcoustIdClient }} deps
      */
-    constructor({ dialog, settings, player, platform }) {
+    constructor({ dialog, settings, player, platform, acoustId }) {
         this.#dialog = dialog;
         this.#form = /** @type {HTMLFormElement} */ (dialog.querySelector('[data-bind="form"]'));
         this.#settings = settings;
         this.#player = player;
         this.#platform = platform;
+        this.#acoustId = acoustId;
     }
 
     /** @returns {{ title: string, fields: FieldSpec[] }[]} */
@@ -77,6 +82,9 @@ export class SettingsSheet {
                 fields: [
                     { key: 'onlineLookup', label: 'Искать обложки и названия', type: 'switch',
                       hint: 'Наружу уходит отпечаток звука (AcoustID) и названия треков (iTunes). Сама музыка никуда не отправляется.' },
+                    { key: 'acoustidKey', label: 'Ключ AcoustID', type: 'text', placeholder: 'встроенный',
+                      hint: 'Ключ приложения: acoustid.org → Applications → New application. '
+                          + 'Личный ключ со страницы «API key» не подойдёт. Пусто — встроенный ключ.' },
                 ],
             },
         ];
@@ -92,28 +100,37 @@ export class SettingsSheet {
             if (action === 'reset' && confirm('Вернуть все настройки как было?')) this.#settings.reset();
         });
 
-        // ползунки — сразу по ходу, остальное — по выбору
-        this.#form.addEventListener('input', event => this.#commit(/** @type {HTMLInputElement} */ (event.target)));
-        this.#form.addEventListener('change', event => this.#commit(/** @type {HTMLInputElement} */ (event.target)));
+        // ползунки — сразу по ходу, текст — когда дописали, остальное — по выбору
+        this.#form.addEventListener('input', event => this.#commit(/** @type {HTMLInputElement} */ (event.target), false));
+        this.#form.addEventListener('change', event => this.#commit(/** @type {HTMLInputElement} */ (event.target), true));
         this.#form.addEventListener('submit', event => event.preventDefault());
 
         this.#settings.on('change', ({ key }) => this.#sync(key));
         this.#player.on('engine', () => this.#availability());
+        this.#acoustId.on('status', () => this.#keyStatus());
     }
 
     /** @param {'keys'} [section] */
     open(section) {
         for (const key of this.#fields.keys()) this.#sync(key);
         this.#availability();
+        this.#keyStatus();
         this.#dialog.showModal();
         if (section) this.#form.querySelector(`[data-section="${section}"]`)?.scrollIntoView({ block: 'start' });
     }
 
-    /** @param {HTMLInputElement} input */
-    #commit(input) {
+    /**
+     * @param {HTMLInputElement} input
+     * @param {boolean} final 'change', а не 'input'
+     */
+    #commit(input, final) {
         const entry = this.#fields.get(input.name);
         if (!entry) return;
         const { field } = entry;
+        if (field.type === 'text') {
+            if (final) this.#settings.set(field.key, input.value.trim());
+            return;
+        }
         if (field.type === 'range') this.#settings.set(field.key, Number(input.value) / 100);
         else if (field.type === 'switch') this.#settings.set(field.key, input.checked);
         else if (input.checked) this.#settings.set(field.key, input.value);
@@ -133,10 +150,19 @@ export class SettingsSheet {
             /** @type {HTMLOutputElement} */ (root.querySelector('output')).value = `${percent}%`;
         } else if (field.type === 'switch') {
             /** @type {HTMLInputElement} */ (root.querySelector('input')).checked = value;
+        } else if (field.type === 'text') {
+            const input = /** @type {HTMLInputElement} */ (root.querySelector('input'));
+            if (document.activeElement !== input) input.value = value;
         } else {
             const radio = /** @type {HTMLInputElement | null} */ (root.querySelector(`input[value="${value}"]`));
             if (radio) radio.checked = true;
         }
+    }
+
+    /** Состояние ключа — прямо под полем, где его меняют. */
+    #keyStatus() {
+        const note = this.#fields.get('acoustidKey')?.root.querySelector('[data-bind="key-status"]');
+        if (note) note.textContent = describeAcoustIdStatus(this.#acoustId.status);
     }
 
     /** Что недоступно в выбранном режиме звука — видно, но неактивно, с причиной. */
@@ -192,6 +218,25 @@ export class SettingsSheet {
             const input = document.createElement('input');
             Object.assign(input, { id, name: field.key, type: 'range', min: '0', max: '100', step: '1', className: 'range' });
             root.append(label, input);
+        } else if (field.type === 'text') {
+            root = document.createElement('div');
+            root.className = 'field';
+            const label = document.createElement('label');
+            label.className = 'field__label';
+            label.htmlFor = id;
+            label.textContent = field.label;
+            const input = document.createElement('input');
+            Object.assign(input, {
+                id, name: field.key, type: 'text', className: 'text-input', maxLength: 32,
+                autocomplete: 'off', spellcheck: false, placeholder: field.placeholder ?? '',
+            });
+            input.setAttribute('autocapitalize', 'off');
+            input.setAttribute('autocorrect', 'off');
+            const status = document.createElement('p');
+            status.className = 'field__hint field__status';
+            status.dataset.bind = 'key-status';
+            status.setAttribute('aria-live', 'polite');
+            root.append(label, input, status);
         } else if (field.type === 'switch') {
             root = document.createElement('div');
             root.className = 'field';

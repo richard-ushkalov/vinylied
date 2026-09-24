@@ -79,6 +79,15 @@ const resolver = new MetadataResolver({
     coverArt: new CoverArtArchive(),
 });
 const lookup = new LookupQueue({ library, resolver, settings });
+// Ключ из настроек важнее встроенного: его можно поправить прямо на
+// телефоне, без выкладки. Смена ключа — повод перепроверить треки,
+// которые AcoustID ещё не видел (это решает LookupQueue.needs).
+acoustId.setKey(settings.get('acoustidKey') || ACOUSTID_KEY);
+settings.on('change', ({ key, value }) => {
+    if (key !== 'acoustidKey') return;
+    acoustId.setKey(value || ACOUSTID_KEY);
+    lookup.schedule(300);
+});
 
 // ── интерфейс ──────────────────────────────────────────────────
 const status = new StatusLine($('.status'));
@@ -102,10 +111,9 @@ const picker = new FilePicker({ input: $('.file-input'), target: document.body }
 const install = new InstallPrompt({ platform });
 const librarySheet = new LibrarySheet({
     dialog: $('#library-sheet'),
-    library, tracks, settings, lookup, install, controller,
-    canFingerprint: () => resolver.canFingerprint,
+    library, tracks, settings, lookup, install, controller, acoustId,
 });
-const settingsSheet = new SettingsSheet({ dialog: $('#settings-sheet'), settings, player, platform });
+const settingsSheet = new SettingsSheet({ dialog: $('#settings-sheet'), settings, player, platform, acoustId });
 const spinner = new DiscSpinner({
     speed: () => controller.speed(),
     disc: () => shelf.discOf(controller.current),

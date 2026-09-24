@@ -1,3 +1,4 @@
+import { Emitter } from '../core/Emitter.js';
 import { NetworkError } from './http.js';
 import { throttle } from './throttle.js';
 
@@ -46,15 +47,26 @@ const jsonp = url => new Promise((resolve, reject) => {
 });
 
 /**
- * Распознавание по звуку: отпечаток Chromaprint → AcoustID → записи
- * MusicBrainz. Нужен бесплатный ключ приложения (см. src/config.js).
- * Наружу уходит только отпечаток и длительность — не сам звук.
+ * @typedef {'missing' | 'unverified' | 'ok' | 'rejected'} KeyStatus
+ *   missing — ключа нет; unverified — задан, но ещё ни разу не спрашивали;
+ *   ok — сервис ответил по делу; rejected — сервис ключ не принял
  */
-export class AcoustIdClient {
+
+/**
+ * Распознавание по звуку: отпечаток Chromaprint → AcoustID → записи
+ * MusicBrainz. Нужен бесплатный ключ ПРИЛОЖЕНИЯ (не личный ключ
+ * пользователя): см. src/config.js или Настройки → Интернет.
+ * Наружу уходит только отпечаток и длительность — не сам звук.
+ *
+ * Событие 'status' — сменилось состояние ключа.
+ */
+export class AcoustIdClient extends Emitter {
     #rejected = false;
+    #verified = false;
 
     /** @param {{ key: string, fetch?: typeof fetch, jsonp?: typeof jsonp }} options */
     constructor({ key, fetch = globalThis.fetch?.bind(globalThis), jsonp: load = jsonp }) {
+        super();
         this.key = key;
         this.fetch = fetch;
         this.jsonp = load;
@@ -63,6 +75,25 @@ export class AcoustIdClient {
 
     /** Ключ задан и сервис его не отверг. */
     get enabled() { return Boolean(this.key) && !this.#rejected; }
+
+    /** @returns {KeyStatus} */
+    get status() {
+        if (!this.key) return 'missing';
+        if (this.#rejected) return 'rejected';
+        return this.#verified ? 'ok' : 'unverified';
+    }
+
+    /**
+     * Новый ключ (из настроек). Прежний отказ к нему не относится.
+     * @param {string} key
+     */
+    setKey(key) {
+        if (key === this.key) return;
+        this.key = key;
+        this.#rejected = false;
+        this.#verified = false;
+        this.emit('status', { status: this.status });
+    }
 
     /**
      * @param {{ fingerprint: string, duration: number }} print
@@ -84,11 +115,17 @@ export class AcoustIdClient {
 
         if (data?.status === 'error') {
             if (data.error?.code === INVALID_KEY) {
+                // Чаще всего это личный ключ пользователя вместо ключа
+                // приложения. Не долбим сервис: выключаемся до смены ключа.
                 this.#rejected = true;
-                console.warn('AcoustID отверг ключ — распознавание по звуку выключено до перезапуска');
+                this.emit('status', { status: this.status });
                 return [];
             }
             throw new NetworkError(`AcoustID: ${data.error?.message ?? 'ошибка'}`);
+        }
+        if (!this.#verified && data?.status === 'ok') {
+            this.#verified = true;
+            this.emit('status', { status: this.status });
         }
         return data?.results ?? [];
     }

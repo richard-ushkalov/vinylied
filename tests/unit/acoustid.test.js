@@ -72,3 +72,27 @@ test('lookup: прочая ошибка сервиса — «попробова�
     const client = new AcoustIdClient({ key: 'k', fetch: json({ status: 'error', error: { code: 14, message: 'rate limit' } }) });
     await assert.rejects(client.lookup({ fingerprint: 'AQ', duration: 1 }), NetworkError);
 });
+
+test('статус ключа: нет → задан → работает; отказ до смены ключа', async () => {
+    let reply = { status: 'ok', results: [] };
+    const client = new AcoustIdClient({ key: '', fetch: async () => ({ json: async () => reply }) });
+    const seen = [];
+    client.on('status', ({ status }) => seen.push(status));
+
+    assert.equal(client.status, 'missing');
+    client.setKey('AppKey01');
+    assert.equal(client.status, 'unverified');
+    await client.lookup({ fingerprint: 'AQ', duration: 10 });
+    assert.equal(client.status, 'ok');
+
+    reply = { status: 'error', error: { code: 4, message: 'invalid API key' } };
+    client.setKey('UserKey123');
+    await client.lookup({ fingerprint: 'AQ', duration: 10 });
+    assert.equal(client.status, 'rejected');
+    assert.equal(client.enabled, false);
+
+    // новый ключ — прежний отказ к нему не относится
+    client.setKey('AppKey02');
+    assert.equal(client.status, 'unverified');
+    assert.deepEqual(seen, ['unverified', 'ok', 'unverified', 'rejected', 'unverified']);
+});

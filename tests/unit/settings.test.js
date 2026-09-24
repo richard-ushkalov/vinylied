@@ -60,3 +60,13 @@ test('reset возвращает умолчания и рассылает тол
     assert.deepEqual(keys, ['fisheye']);
     assert.equal(settings.get('fisheye'), 1);
 });
+
+test('строковая настройка: пробелы срезаются, мусор отбрасывается', () => {
+    assert.equal(coerce(SCHEMA.acoustidKey, '  AbC12345 '), 'AbC12345');
+    assert.equal(coerce(SCHEMA.acoustidKey, 'bad key!'), '');
+    assert.equal(coerce(SCHEMA.acoustidKey, 'x'.repeat(40)), '');
+    assert.equal(coerce(SCHEMA.acoustidKey, 42), '');
+    const settings = new Settings({ store: memory(null) });
+    settings.set('acoustidKey', ' 8XaBELgH ');
+    assert.equal(settings.get('acoustidKey'), '8XaBELgH');
+});
