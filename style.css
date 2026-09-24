@@ -1,7 +1,11 @@
 :root {
     --perspective: 1000px;
 
-    --vinyl-size: 40cqmin;
+    /* Растёт со сценой, но не больше того, что влезает в ширину:
+       текущий конверт отъезжает вбок, и паре «пластинка + конверт»
+       нужно примерно 1.7 ширины обложки. Нижняя граница — чтобы
+       на телефоне корешок не превратился в нитку. */
+    --vinyl-size: clamp(170px, min(52cqmin, 56cqw), 430px);
     --vynil-side-divider: 20;
     --vinyl-thickness: calc(var(--vinyl-size) / var(--vynil-side-divider));
     --vinyl-half-thickness: calc(var(--vinyl-thickness) / 2);
@@ -41,14 +45,37 @@ button, select, input, textarea { font: inherit; }
     overflow-x: hidden;
 }
 
-.input {
+.bar {
     z-index: 10;
-    
+
     position: absolute;
     top: 0;
     left: 50%;
     transform: translate(-50%, 0);
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+
+    max-width: 100%;
 }
+
+/* поле поиска в том же языке, что и полоса прокрутки: белая линия в 1px */
+.search {
+    min-width: 0;
+    flex: 0 1 260px;
+
+    padding: 4px 2px;
+
+    color: #fff;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid rgb(255 255 255 / .35);
+    outline-offset: 4px;
+}
+.search::placeholder { color: rgb(255 255 255 / .35); }
+.search:focus { border-bottom-color: #fff; }
 
 .main {
     flex: 1;
@@ -102,7 +129,8 @@ button, select, input, textarea { font: inherit; }
 
     transform-style: preserve-3d;
 
-    transition: padding-block var(--animation-base-time) var(--fade-out);
+    transition: padding-block var(--animation-base-time) var(--fade-out),
+                height var(--animation-base-time) var(--fade-out);
 }
 
 /* Текущий трек — и когда играет, и когда на паузе. Вид один и тот же,
@@ -120,13 +148,13 @@ button, select, input, textarea { font: inherit; }
    строк, ни специфичность на результат не влияют.             */
 
 @media (hover: hover) {
-    .slot:not(.slot--current, .slot--focused):hover .vinyl {
+    .slot:not(.slot--current, .slot--focused, .slot--gone, .slot--swap):hover .vinyl {
         transform: translateZ(calc(var(--vinyl-size) / 4));
     }
 }
 
 /* ближайший к центру — слегка подан вперёд, плашмя */
-.slot--focused:not(.slot--current) .vinyl {
+.slot--focused:not(.slot--current, .slot--gone, .slot--swap) .vinyl {
     transform: translateZ(calc(var(--vinyl-size) / 4));
 }
 
@@ -140,6 +168,29 @@ button, select, input, textarea { font: inherit; }
                translateZ(calc(var(--vinyl-size) / 2))
                rotateX(-90deg);
 }
+
+/* ── уход и приход ─────────────────────────────────────────────
+   Двигаем .vinyl, а НЕ .slot: слоту покадрово пишет transform scroll.js,
+   и второй хозяин у того же свойства — это ровно та ошибка, на которой
+   мы уже спотыкались. Правила идут последними, чтобы при равной
+   специфичности побеждать состояния выше. */
+
+/* Специфичность здесь не случайность: :not() добавляет вес своего
+   аргумента, поэтому .slot--focused:not(.slot--current) .vinyl весит 0-3-0
+   и побило бы эти правила при любом порядке строк. Поэтому --gone и --swap
+   перечислены в его :not() — селекторы взаимоисключающие, и спорить им не о чем. */
+
+/* отсеян поиском: улетает и забирает своё место с собой */
+.slot--gone {
+    height: 0;
+    padding-block: 0;
+    pointer-events: none;
+}
+.slot--gone .vinyl { transform: translateX(-140%); }
+
+/* обложка нашлась: конверт уходит и возвращается уже с новой */
+.slot--swap .vinyl { transform: translateX(-140%); }
+
 
 /* ── коробка ──────────────────────────────────────────────── */
 .vinyl {
@@ -189,7 +240,13 @@ button, select, input, textarea { font: inherit; }
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 15px;
+    gap: calc(var(--vinyl-thickness) * 0.8);
+
+    /* Подпись привязана к ТОЛЩИНЕ корешка, а не к размеру страницы:
+       корешок тонкий по определению, и текст в 16px вылезал из него
+       на любом экране — просто на телефоне это стало заметно. */
+    font-size: calc(var(--vinyl-thickness) * 0.78);
+    line-height: 1;
 
     transform: translate(-50%, -50%)
                translateZ(calc(var(--vinyl-size) / 2));
@@ -270,7 +327,6 @@ button, select, input, textarea { font: inherit; }
     position: absolute;
     bottom: 0;
     left: 0;
-
     width: 3px;
     height: 7px;
 
@@ -293,6 +349,15 @@ button, select, input, textarea { font: inherit; }
 }
 .progress--rewind .progress__handle {
     transition: left 560ms cubic-bezier(.22, .9, .25, 1);
+}
+
+/* Смена трека: палочка не отматывается назад, а уходит за правый край,
+   телепортируется за левый и выезжает оттуда. Короче обычной доводки —
+   иначе две половины эффекта складываются больше чем в секунду. */
+.progress--wrap .progress__handle,
+.progress--wrap .progress__fill {
+    transition: left 300ms cubic-bezier(.55, 0, .45, 1),
+                transform 300ms cubic-bezier(.55, 0, .45, 1);
 }
 
 
@@ -321,6 +386,9 @@ button, select, input, textarea { font: inherit; }
 .slot--current .vinyl__box {
     transform: translateX(calc(var(--vinyl-size) * 0.72));
 }
+
+.slot--current .disc,
+.slot--recent .disc { display: block; }
 
 /* пластинку показываем сразу, а прячем — только когда конверт доехал,
    то есть при СМЕНЕ трека; на паузе она так и остаётся снаружи */
@@ -359,9 +427,68 @@ button, select, input, textarea { font: inherit; }
                translateZ(calc(var(--vinyl-size) / 2));
 }
 
+/* ── игла ──────────────────────────────────────────────────────
+   Шарнир слева сверху, вне пластинки; брусок тянется вправо, головка
+   на дальнем конце. Угол считает app.js из позиции в треке: 77° —
+   внешняя дорожка, 54° — у этикетки. Числа не на глаз: при шарнире
+   внешняя дорожка, 54° — край этикетки. Вывод чисел — в app.js. */
+.tonearm {
+    display: none;
+
+    width: calc(var(--vinyl-size) * 0.72);
+    height: 1px;
+
+    position: absolute;
+    left: 50%;
+    top: 50%;
+
+    background: #fff;
+
+    /* Шарнир — левый край бруска, он же центр вращения. translateZ
+       ПОСЛЕ rotateX поднимает иглу над пластинкой: они компланарны,
+       и без явного зазора порядок отрисовки решал бы движок. */
+    /* Порядок здесь не косметика. Сначала rotateX кладёт систему координат
+       в плоскость пластинки, и только ПОТОМ смещаем шарнир — иначе его
+       -0.44 отсчитывались бы вверх по вертикальной плоскости конверта,
+       и игла висела бы над диском, а не лежала на нём. */
+    transform-origin: 0 50%;
+    transform: rotateX(90deg)
+               translateZ(6px)
+               translate(calc(var(--vinyl-size) * -0.52), calc(var(--vinyl-size) * -0.44))
+               rotate(var(--arm, 77deg));
+}
+
+.slot--current .tonearm,
+.slot--recent .tonearm { display: block; }
+
+.tonearm__pivot,
+.tonearm__head {
+    position: absolute;
+    top: 50%;
+    background: #fff;
+}
+.tonearm__pivot {
+    left: 0;
+    width: 7px; height: 7px;
+    transform: translate(-50%, -50%);
+}
+/* головка — та же палочка, что и на полосе прокрутки */
+.tonearm__head {
+    right: 0;
+    width: 3px; height: 7px;
+    transform: translate(50%, -50%);
+}
+
+
 /* ── пластинка ─────────────────────────────────────────────── */
 .disc {
     --disc-size: calc(var(--vinyl-size) * 0.94);
+
+    /* Пластинку рисуем ТОЛЬКО у текущего трека и у прежнего, пока он
+       доигрывает уход. У остальных её нет в отрисовке вообще: браузер
+       не декодирует этикетку и не держит круг с обводкой на каждом
+       конверте полки. Из-за этого и подтормаживал Safari. */
+    display: none;
 
     /* Пока конверт закрыт, пластинка внутри — значит её не видно.
        visibility, а не opacity: opacity меньше единицы принудительно
@@ -385,57 +512,11 @@ button, select, input, textarea { font: inherit; }
                translateZ(calc(var(--vinyl-half-thickness) * -0.2))
                rotateZ(var(--disc-spin, 0deg));
 
-    /* closest-side у всех градиентов ОБЯЗАТЕЛЕН. По умолчанию действует
-       farthest-corner: луч идёт в угол квадрата, а он в 1.41 раза длиннее
-       радиуса — из-за этого прежнее кольцо на 34% промахивалось мимо
-       этикетки почти вдвое и висело в воздухе ни к чему не привязанное.
-       С closest-side 100% — это край диска, и этикетка (width: 34%)
-       попадает ровно на отметку 34%. Первый слой в списке лежит СВЕРХУ. */
-    background:
-        /* свет по кромке: геометрической толщины у диска нет, её держит линия */
-        radial-gradient(circle closest-side at 50% 50%,
-            rgb(255 255 255 / 0) 0 96%,
-            rgb(255 255 255 / .14) 99%,
-            rgb(255 255 255 / 0) 100%),
-
-        /* гладкие зоны: выкатная дорожка у этикетки и лаковый бортик у края.
-           Слой непрозрачный — он же и обрезает бороздки. Обрезать через mask
-           или clip-path нельзя: они, как filter и opacity, принудительно
-           дают transform-style: flat */
-        radial-gradient(circle closest-side at 50% 50%,
-            #0c0c10 0 42%,
-            rgb(12 12 16 / 0) 47% 92%,
-            #0c0c10 96%),
-
-        /* Разделительная полоса между дорожками — единственная асимметричная
-           деталь диска. Без неё вращение не видно ВООБЩЕ: бороздки
-           концентричны, поворот вокруг центра их не меняет. А раз пауза
-           теперь отличается от игры только остановкой диска, видимое
-           вращение стало обязательным. */
-        conic-gradient(from 0deg at 50% 50%,
-            rgb(255 255 255 / .07) 0deg 1.4deg,
-            rgb(255 255 255 / 0)   1.4deg 360deg),
-
-        /* бороздки: тёмная долина и светлая полка, переходы ПЛАВНЫЕ.
-           Прежний резкий штрих в 1px читался как пыль, а не как рельеф,
-           и бился о пиксельную сетку. Зарябит на 1x-экране — поднять
-           период с 3px до 4px (обе цифры пропорционально). */
-        repeating-radial-gradient(circle closest-side at 50% 50%,
-            rgb(0 0 0 / .18) 0px,
-            rgb(255 255 255 / .04) 1.5px,
-            rgb(0 0 0 / .18) 3px),
-
-        /* подложка: зона дорожек чуть СВЕТЛЕЕ гладких — рельеф рассеивает
-           свет, а гладкий лак зеркалит его и кажется глубже чёрным.
-           Мягкий перепад вместо прежнего резкого кольца. */
-        radial-gradient(circle closest-side at 50% 50%,
-            #0d0d11 0 40%,
-            #17171d 70%,
-            #101015 100%);
-
-    /* box-shadow безопасен: в отличие от filter он не схлопывает 3D */
-    box-shadow: 0 0 0 1px rgb(255 255 255 / .07),
-                0 0 12px rgb(0 0 0 / .5);
+    /* Сплошной чёрный, тонкая белая обводка — как палочка прогресса.
+       Бороздок нет намеренно: они концентричны и вращения всё равно
+       не показывают, а весь контур сцены держится на белых линиях в 1px. */
+    background: #000;
+    border: 1px solid #fff;
 
     transform-style: preserve-3d;
 }
@@ -453,10 +534,9 @@ button, select, input, textarea { font: inherit; }
     border-radius: 50%;
     background: var(--disc-art, #222) center / cover;
 
-    /* бумага наклеена на винил: светлая кромка и короткая тень под ней.
-       Тень заодно отделяет матовую этикетку от глянцевой выкатной зоны */
-    box-shadow: 0 0 0 1px rgb(255 255 255 / .10),
-                0 0 8px rgb(0 0 0 / .45);
+    /* по этикетке и читается вращение: у сплошного чёрного диска
+       других подвижных деталей нет */
+    box-shadow: 0 0 0 1px rgb(255 255 255 / .35);
 }
 .disc__label::after {
     content: '';
@@ -471,8 +551,6 @@ button, select, input, textarea { font: inherit; }
 
     border-radius: 50%;
     background: #000;
-
-    /* это дырка, а не чёрная наклейка: подсвечиваем край среза */
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / .35);
 }
 

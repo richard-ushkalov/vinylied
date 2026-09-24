@@ -17,13 +17,17 @@ export const createProgress = ({ root, player, onTick }) => {
 
     let frame = 0;
     let dragging = false;
+    let wrapping = false;   // идёт перелёт палочки через край
     let moved = false;
     let pointerId = null;
 
     const show = fraction => {
         const value = Math.max(0, Math.min(1, fraction || 0));
         fill.style.transform = `scaleX(${value})`;
-        handle.style.left = `${value * 100}%`;
+        // Во время перелёта палочку не трогаем: следующий трек может быть
+        // уже предзагружен, тогда 'playing' прилетает почти сразу и покадровый
+        // show() затёр бы анимацию на первом же кадре.
+        if (!wrapping) handle.style.left = `${value * 100}%`;
         root.setAttribute('aria-valuenow', Math.round(value * 100));
     };
 
@@ -99,14 +103,48 @@ export const createProgress = ({ root, player, onTick }) => {
     // нельзя, иначе диск замрёт на полном ходу вместо выбега. Цикл догорает
     // сам, когда скорость дойдёт до нуля — то есть ровно когда диск встал.
     player.on('ended',   () => { stop(); show(0); });
-    // При смене трека полоса не прыгает, а отматывается: включаем переход
-    // разово классом и снимаем его, чтобы он не мешал покадровым обновлениям.
+    // Смена трека: палочка уезжает за правый край, телепортируется за левый
+    // и выезжает обратно — вместо того чтобы отматываться через всю полосу.
+    const ESCAPE = 16;   // px за край: палочке шириной 3px хватает с запасом
+
+    // Зовётся ТОЛЬКО когда трек доиграл сам. Ручное переключение получает
+    // обычную отмотку ниже: перелёт через край — это про «дошли до конца».
+    const wrap = () => {
+        wrapping = true;
+        root.classList.add('progress--wrap');
+        // Полосу добиваем до конца, а не гасим: она должна уехать вместе
+        // с палочкой, а обнулиться уже за экраном.
+        handle.style.left = `calc(100% + ${ESCAPE}px)`;
+        fill.style.transform = 'scaleX(1)';
+
+        setTimeout(() => {
+            // Телепорт — БЕЗ перехода, иначе палочка проедет обратно по полосе.
+            root.classList.remove('progress--wrap');
+            handle.style.left = `${-ESCAPE}px`;
+            fill.style.transform = 'scaleX(0)';   // без перехода, за экраном
+
+            // Принудительный пересчёт раскладки. Без него браузер схлопнет
+            // оба присваивания в одно на конце задачи, перехода не случится,
+            // и палочка просто окажется на месте.
+            void root.offsetWidth;
+
+            root.classList.add('progress--wrap');
+            handle.style.left = '0%';
+            setTimeout(() => {
+                root.classList.remove('progress--wrap');
+                wrapping = false;      // дальше палочку снова ведёт show()
+            }, 320);
+        }, 320);
+    };
+
+    // Ручное переключение: полоса отматывается к началу по всей длине.
     player.on('emptied', () => {
+        if (wrapping) return;              // уже летим через край — не мешаем
         root.classList.add('progress--rewind');
         show(0);
         setTimeout(() => root.classList.remove('progress--rewind'), 580);
     });
 
     show(0);
-    return { show, stop };
+    return { show, stop, wrap };
 };

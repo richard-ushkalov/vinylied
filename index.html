@@ -15,10 +15,14 @@
     </head>
     <body>
         <div class="layout">
-            <label class="file-button">
-                <span>Выбрать музыку</span>
-                <input class="input" type="file" accept="audio/*" multiple>
-            </label>
+            <div class="bar">
+                <label class="file-button">
+                    <span>Выбрать музыку</span>
+                    <input class="input" type="file" accept="audio/*" multiple>
+                </label>
+                <input class="search" type="search" autocomplete="off"
+                       placeholder="Поиск по трекам и альбомам" aria-label="Поиск по полке">
+            </div>
             <div class="main">
                 <div class="scene">
                     <ul class="list"></ul>
@@ -41,6 +45,13 @@
                         <div class="disc__label"></div>
                     </div>
 
+                    <!-- игла: соседка пластинки, а не её ребёнок —
+                         иначе крутилась бы вместе с ней -->
+                    <div class="tonearm">
+                        <i class="tonearm__pivot"></i>
+                        <i class="tonearm__head"></i>
+                    </div>
+
                     <!-- конверт: шесть граней, при игре отъезжает вбок -->
                     <div class="vinyl__box">
                         <img src="" alt="" class="vinyl__frontside">
@@ -57,8 +68,5 @@
             </li>
         </template>
 
-        <template id="player-template">
-            <audio class="player" src="" preload="none"></audio>
-        </template>
     </body>
 </html>

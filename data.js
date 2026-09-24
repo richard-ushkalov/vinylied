@@ -55,6 +55,64 @@ const extractCover = async (blob, { size = 32, shift = 6, minScore = 2 } = {}) =
     return { spine: `rgb(${r} ${g} ${b})`, text: luminance > 0.18 ? '#111' : '#fff' };
 };
 
+// ── запасная обложка ─────────────────────────────────────────
+// Рисуем её сами, когда в файле картинки нет. Нарочно в стиле сцены —
+// чёрное поле и белые линии в 1px, как у полосы прокрутки и обводки
+// пластинки: сгенерированную обложку должно быть ВИДНО, что она
+// сгенерированная, а не выдана за настоящую.
+const hash = text => {
+    let h = 0;
+    for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 100000;
+    return h;
+};
+
+const initials = text => text.trim().split(/\s+/).slice(0, 2)
+    .map(word => [...word][0] ?? '').join('').toUpperCase() || '?';
+
+const makeCover = ({ album, artist }) => {
+    const seed = hash(`${artist}${album}`);
+    const angle = seed % 180;                    // наклон штрихов
+    const gap = 14 + (seed >> 3) % 10;           // шаг между ними
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+        <rect width="200" height="200" fill="#000"/>
+        <g stroke="#fff" stroke-width="1" opacity=".5"
+           transform="rotate(${angle} 100 100)">
+            ${Array.from({ length: Math.ceil(300 / gap) },
+                (_, i) => `<line x1="-50" y1="${-50 + i * gap}" x2="250" y2="${-50 + i * gap}"/>`).join('')}
+        </g>
+        <circle cx="100" cy="100" r="62" fill="#000" stroke="#fff" stroke-width="1"/>
+        <text x="100" y="100" fill="#fff" text-anchor="middle" dominant-baseline="central"
+              font-family="system-ui, sans-serif" font-size="44" font-weight="300"
+              letter-spacing="2">${initials(album)}</text>
+    </svg>`;
+
+    return `data:image/svg+xml,${encodeURIComponent(svg.replace(/\s+/g, ' '))}`;
+};
+
+/**
+ * Поиск обложки в интернете — iTunes Search API: без ключа, с открытым CORS.
+ *
+ * ВАЖНО, что это значит: наружу, на серверы Apple, уходят исполнитель
+ * и название альбома из его файлов. Поэтому зовётся только для треков,
+ * где своей картинки нет, и не больше трёх попыток на трек.
+ */
+export const findCover = async ({ artist, album }) => {
+    if (!album || album === 'Без альбома') return null;
+
+    const term = encodeURIComponent(`${artist} ${album}`.trim());
+    const url = `https://itunes.apple.com/search?term=${term}&entity=album&limit=1`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const { results } = await response.json();
+        const art = results?.[0]?.artworkUrl100;
+        // в ответе миниатюра 100×100; размер зашит прямо в адрес
+        return art ? art.replace(/\/\d+x\d+bb\./, '/600x600bb.') : null;
+    } catch { return null; }   // нет сети — не беда, останется своя обложка
+};
+
 export const readTrack = async file => {
     const { common } = await parseBlob(file).catch(() => ({ common: {} }));
 
@@ -67,16 +125,26 @@ export const readTrack = async file => {
 
     const url = URL.createObjectURL(file);
 
+    const title  = common.title  || file.name.replace(/\.[^.]+$/, '');
+    const album  = common.album  || 'Без альбома';
+    const artist = common.artist || '';
+
     return {
-        title: common.title || 'Title',
-        album: common.album || 'Album',
-        artist: common.artist || '',
-        cover: coverUrl,
+        title,
+        album,
+        artist,
+        hasCover: Boolean(coverUrl),   // false — обложка нарисована нами
+        tries: 0,                      // сколько раз искали её в сети
+        // Своей обложки нет — рисуем запасную. Цвет корешка при этом
+        // НЕ выдумываем: он остаётся пустым и берёт нейтральный откат
+        // из CSS. Придуманный цвет выглядел бы как настоящий результат
+        // разбора картинки, а это враньё.
+        cover: coverUrl ?? makeCover({ album, artist }),
         spine: palette?.spine ?? null,
         spineText: palette?.text ?? null,
         src: url,
         dispose() {
-            if (coverUrl) URL.revokeObjectURL(coverUrl);
+            if (coverUrl) URL.revokeObjectURL(coverUrl);   // data: отзывать нечего
             URL.revokeObjectURL(url);
         }
     };

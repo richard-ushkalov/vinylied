@@ -52,6 +52,7 @@ export const createScroll = (viewport, { onScrub } = {}) => {
     const FISH_DEPTH = 140;   // насколько края утопают вглубь
     const FISH_SPREAD = 320;  // на какой дистанции эффект набирает силу
     const MAX_BLUR    = 4;    // px размытия у самых дальних
+    const VISIBLE     = FISH_SPREAD * 1.8;   // дальше слот не рисуем вообще
 
     // один проход: и наклон по расстоянию до центра, и отметка ближайшего
     const updateSlots = () => {
@@ -73,6 +74,17 @@ export const createScroll = (viewport, { onScrub } = {}) => {
 
             const distance = Math.abs(offset);
             if (distance < best) { best = distance; nearest = index; }
+
+            // Далеко за экраном — снимаем с отрисовки и больше ничего не считаем.
+            // Раньше каждому слоту полки, включая невидимые, покадрово писались
+            // transform и filter: на длинной полке это десятки размытий в кадр
+            // впустую. Флаг держим в dataset, чтобы не трогать стиль каждый кадр.
+            const far = distance > VISIBLE;
+            if (far !== (slot.dataset.far === '1')) {
+                slot.dataset.far = far ? '1' : '';
+                slot.style.visibility = far ? 'hidden' : '';
+            }
+            if (far) return;
 
             // рыбий глаз: чем дальше от центра, тем сильнее наклон и утопание
             const t = Math.max(-1, Math.min(1, offset / FISH_SPREAD));
@@ -132,6 +144,68 @@ export const createScroll = (viewport, { onScrub } = {}) => {
         }
     }
 
+    // ── прокрутка пальцем ─────────────────────────────────────────
+    // Мышь сюда не пускаем: на десктопе крутят колесом, а перетаскивание
+    // мышью только мешало бы клику по конверту.
+    const THRESHOLD = 6;     // px, после которых это уже прокрутка, а не клик
+    const COAST = 200;       // мс наката после броска
+
+    let dragId = null;
+    let dragFrom = 0, dragBase = 0, dragging = false;
+    let lastY = 0, lastTime = 0, velocity = 0;
+    let swallowClick = false;
+
+    const onPointerDown = event => {
+        if (event.pointerType === 'mouse') return;
+        dragId = event.pointerId;
+        dragFrom = lastY = event.clientY;
+        lastTime = event.timeStamp;
+        dragBase = currentPos;
+        dragging = false;
+        velocity = 0;
+        clearTimeout(snapTimer);
+    };
+
+    const onPointerMove = event => {
+        if (event.pointerId !== dragId) return;
+        const delta = event.clientY - dragFrom;
+
+        // Захват ставим ТОЛЬКО когда палец реально поехал. Если взять его
+        // сразу на pointerdown, браузер перенаправит на viewport и click —
+        // и нажатие на конкретный конверт перестанет доходить.
+        if (!dragging) {
+            if (Math.abs(delta) < THRESHOLD) return;
+            dragging = true;
+            // Указателя может уже не быть (палец ушёл за окно, событие
+            // синтетическое) — тогда просто работаем без захвата.
+            try { viewport.setPointerCapture(dragId); } catch {}
+        }
+
+        const dt = event.timeStamp - lastTime;
+        if (dt > 0) velocity = (event.clientY - lastY) / dt;   // px в мс
+        lastY = event.clientY;
+        lastTime = event.timeStamp;
+
+        currentPos = targetPos = dragBase + delta;
+        draw();
+        onScrub?.(Math.min(1, Math.abs(velocity) * 0.6));
+    };
+
+    const onPointerUp = event => {
+        if (event.pointerId !== dragId) return;
+        dragId = null;
+        if (!dragging) return;              // это был тап, а не прокрутка
+        dragging = false;
+        swallowClick = true;                // ...а вот это была прокрутка
+        try { viewport.releasePointerCapture(event.pointerId); } catch {}
+
+        targetPos = currentPos + velocity * COAST;   // бросок докатывается
+        start();
+
+        clearTimeout(snapTimer);
+        snapTimer = setTimeout(snap, 400);
+    };
+
     let layoutTimer = 0;
 
     const observer = new ResizeObserver(() => {
@@ -151,6 +225,21 @@ export const createScroll = (viewport, { onScrub } = {}) => {
     return { 
         attach() {
             viewport.addEventListener('wheel', onWheel, { passive: true });
+
+            viewport.addEventListener('pointerdown', onPointerDown);
+            viewport.addEventListener('pointermove', onPointerMove);
+            viewport.addEventListener('pointerup', onPointerUp);
+            viewport.addEventListener('pointercancel', onPointerUp);
+
+            // После протяжки браузер всё равно шлёт click — и полка запускала бы
+            // трек, на котором палец случайно остановился. Гасим ровно один.
+            // stopImmediatePropagation, а не stopPropagation: слушатель клика
+            // висит на этом же элементе, обычная остановка его бы не сняла.
+            viewport.addEventListener('click', event => {
+                if (!swallowClick) return;
+                swallowClick = false;
+                event.stopImmediatePropagation();
+            }, true);
 
             // requestAnimationFrame замирает в скрытой вкладке. Если её
             // свернули посреди доводки, запрошенный кадр не придёт, а frame
