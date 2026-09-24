@@ -50,6 +50,8 @@ export const SCHEMA = {
     // пустой адрес — встроенный из src/config.js
     downloadCode:   { type: 'string', max: 64, pattern: /^[A-Za-z0-9_-]*$/, default: '' },
     downloadServer: { type: 'string', max: 200, pattern: SERVER_ORIGIN, default: '' },
+    // где искать в сети — последняя открытая вкладка
+    downloadSource: { type: 'enum', values: ['spotify', 'youtube'], default: 'spotify' },
 };
 
 const VERSION = 1;

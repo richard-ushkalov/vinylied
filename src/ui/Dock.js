@@ -6,7 +6,7 @@ const SEARCH_DEBOUNCE = 120;
  * Нижняя панель: что играет, мини-обложка, ⏯, поиск, «добавить».
  *
  * События: 'toggle', 'add', 'reveal' (показать играющий конверт),
- * 'search' {query}.
+ * 'search' {query}, 'submit' {query} — «Найти» на клавиатуре.
  */
 export class Dock extends Emitter {
     #root;
@@ -46,8 +46,14 @@ export class Dock extends Emitter {
             clearTimeout(this.#searchTimer);
             this.#searchTimer = window.setTimeout(() => this.emit('search', { query: this.input.value }), SEARCH_DEBOUNCE);
         });
-        // «Найти» на клавиатуре телефона — просто спрятать клавиатуру
-        this.form.addEventListener('submit', event => { event.preventDefault(); this.input.blur(); });
+        // «Найти» на клавиатуре — искать сразу, без паузы, и спрятать клавиатуру
+        this.form.addEventListener('submit', event => {
+            event.preventDefault();
+            clearTimeout(this.#searchTimer);
+            this.emit('search', { query: this.input.value });
+            this.emit('submit', { query: this.input.value });
+            this.input.blur();
+        });
         this.input.addEventListener('keydown', event => {
             if (event.key !== 'Escape') return;
             event.preventDefault();

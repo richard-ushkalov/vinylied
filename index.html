@@ -65,6 +65,7 @@
             <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r=".9"/><circle cx="12" cy="12" r=".9"/><circle cx="18.5" cy="12" r=".9"/></symbol>
             <symbol id="i-close" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
             <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/></symbol>
+            <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></symbol>
         </svg>
 
         <div class="app">
@@ -128,6 +129,11 @@
                 </form>
                 <!-- «Скачать из сети» — над панелью, пока открыт поиск -->
                 <section class="suggest" aria-label="Скачать из сети" hidden>
+                    <fieldset class="segmented suggest__tabs">
+                        <legend class="visually-hidden">Где искать</legend>
+                        <label><input type="radio" name="downloadSource" value="spotify"><span>Spotify</span></label>
+                        <label><input type="radio" name="downloadSource" value="youtube"><span>YouTube</span></label>
+                    </fieldset>
                     <button class="suggest__more" type="button" data-action="suggest-more">Нет нужного? Найти в сети</button>
                     <p class="suggest__note" role="status"></p>
                     <ul class="suggest__list"></ul>

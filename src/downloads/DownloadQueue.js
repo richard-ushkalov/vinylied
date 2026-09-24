@@ -70,7 +70,7 @@ export class DownloadQueue extends Emitter {
     /** @param {Download} item */
     async #run(item) {
         try {
-            let job = await this.server.start(item.result.id);
+            let job = await this.server.start(item.result);
             let misses = 0;
             while (job.state !== 'done') {
                 if (job.state === 'error') throw new DownloadError(job.error || 'Сервер не смог скачать трек');

@@ -1,12 +1,15 @@
 import { Emitter } from '../core/Emitter.js';
 
 const TIMEOUT = 20_000;
+// поиск и поиск звука для прослушивания ждут дольше: Spotify и YouTube не спешат
+const SLOW_TIMEOUT = 30_000;
 const FILE_TIMEOUT = 5 * 60_000;    // трек на медленном мобильном — это минуты, а не секунды
 
 /**
- * @typedef {{ id: string, title: string, artist: string, album: string,
+ * @typedef {'spotify' | 'youtube'} Source
+ * @typedef {{ id: string, source: Source, title: string, artist: string, album: string,
  *             duration: number, cover: string | null }} RemoteTrack
- *   результат поиска на сервере; id — id трека Spotify
+ *   результат поиска на сервере; id — трека Spotify или ролика YouTube
  * @typedef {{ id: string, state: 'queued' | 'running' | 'done' | 'error',
  *             progress: number, stage: string, error?: string,
  *             file?: { name: string, size: number } }} Job
@@ -29,14 +32,20 @@ const anySignal = signals => {
     return controller.signal;
 };
 
-/** Ошибка, которую можно показать пользователю как есть. */
+/**
+ * Ошибка, которую можно показать пользователю как есть.
+ * offline — сервер не ответил вовсе; timeout — ответил бы, но слишком
+ * долго думает (это не «Мак выключен»); code — код ошибки сервера.
+ */
 export class DownloadError extends Error {
-    /** @param {string} message @param {{ status?: number, offline?: boolean }} [details] */
-    constructor(message, { status = 0, offline = false } = {}) {
+    /** @param {string} message @param {{ status?: number, offline?: boolean, timeout?: boolean, code?: string }} [details] */
+    constructor(message, { status = 0, offline = false, timeout = false, code = '' } = {}) {
         super(message);
         this.name = 'DownloadError';
         this.status = status;
         this.offline = offline;
+        this.timeout = timeout;
+        this.code = code;
     }
 }
 
@@ -82,17 +91,31 @@ export class DownloadServer extends Emitter {
 
     /**
      * @param {string} query
-     * @param {{ signal?: AbortSignal }} [options]
+     * @param {{ source?: Source, signal?: AbortSignal }} [options]
      * @returns {Promise<RemoteTrack[]>}
      */
-    async search(query, { signal } = {}) {
-        const data = await this.#json(`/v1/search?q=${encodeURIComponent(query)}&limit=8`, { signal });
-        return Array.isArray(data?.results) ? data.results : [];
+    async search(query, { source = 'spotify', signal } = {}) {
+        const path = `/v1/search?q=${encodeURIComponent(query)}&source=${source}&limit=8`;
+        const data = await this.#json(path, { signal, timeout: SLOW_TIMEOUT });
+        return Array.isArray(data?.results) ? data.results.map(item => ({ source, ...item })) : [];
     }
 
-    /** @param {string} trackId @returns {Promise<Job>} */
-    start(trackId) {
-        return this.#json('/v1/downloads', { method: 'POST', body: { id: trackId } });
+    /** @param {RemoteTrack} result @returns {Promise<Job>} */
+    start(result) {
+        return this.#json('/v1/downloads', { method: 'POST', body: { source: result.source ?? 'spotify', id: result.id } });
+    }
+
+    /**
+     * Ссылка для предпрослушивания: сервер сразу находит звук и отдаёт
+     * одноразовую ссылку — плеер ходит по ней без кода в заголовке.
+     * @param {RemoteTrack} result
+     * @returns {Promise<string>}
+     */
+    async preview(result) {
+        const data = await this.#json('/v1/previews', {
+            method: 'POST', body: { source: result.source ?? 'spotify', id: result.id }, timeout: SLOW_TIMEOUT,
+        });
+        return new URL(data.url, this.url).href;
     }
 
     /** @param {string} jobId @param {{ signal?: AbortSignal }} [options] @returns {Promise<Job>} */
@@ -133,7 +156,7 @@ export class DownloadServer extends Emitter {
 
     /**
      * @param {string} path
-     * @param {{ method?: string, body?: unknown, signal?: AbortSignal }} [options]
+     * @param {{ method?: string, body?: unknown, signal?: AbortSignal, timeout?: number }} [options]
      */
     async #json(path, options) {
         const response = await this.#request(path, options);
@@ -146,7 +169,8 @@ export class DownloadServer extends Emitter {
      */
     async #request(path, { method = 'GET', body, signal, timeout = TIMEOUT } = {}) {
         if (!this.enabled) throw new DownloadError('Нет кода доступа к серверу загрузки');
-        const signals = [AbortSignal.timeout(timeout), ...(signal ? [signal] : [])];
+        const deadline = AbortSignal.timeout(timeout);
+        const signals = [deadline, ...(signal ? [signal] : [])];
         let response;
         try {
             response = await this.fetch(`${this.url}${path}`, {
@@ -162,6 +186,8 @@ export class DownloadServer extends Emitter {
         } catch (error) {
             // отменили сами (новый запрос в поиске) — это не «сервер лежит»
             if (signal?.aborted) throw error;
+            // долго думает — жив, просто занят: не пугаем выключенным Маком
+            if (deadline.aborted) throw new DownloadError('Сервер долго не отвечает', { timeout: true });
             this.#setStatus('offline');
             throw new DownloadError('Сервер загрузки недоступен', { offline: true });
         }
@@ -172,7 +198,8 @@ export class DownloadServer extends Emitter {
         this.#setStatus('ok');
         if (!response.ok) {
             const data = await response.json().catch(() => null);
-            throw new DownloadError(data?.message || `Сервер ответил ошибкой ${response.status}`, { status: response.status });
+            throw new DownloadError(data?.message || `Сервер ответил ошибкой ${response.status}`,
+                { status: response.status, code: data?.error ?? '' });
         }
         return response;
     }

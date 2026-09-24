@@ -39,8 +39,8 @@ test('клиент: код в заголовке, адрес по умолчан
     const { server, calls } = makeServer({ '/v1/search': json({ results: [RESULT] }) });
     assert.equal(server.status, 'unknown');
     const results = await server.search('кино группа');
-    assert.deepEqual(results, [RESULT]);
-    assert.equal(calls[0].path, '/v1/search?q=%D0%BA%D0%B8%D0%BD%D0%BE%20%D0%B3%D1%80%D1%83%D0%BF%D0%BF%D0%B0&limit=8');
+    assert.deepEqual(results, [{ ...RESULT, source: 'spotify' }]);
+    assert.equal(calls[0].path, '/v1/search?q=%D0%BA%D0%B8%D0%BD%D0%BE%20%D0%B3%D1%80%D1%83%D0%BF%D0%BF%D0%B0&source=spotify&limit=8');
     assert.equal(calls[0].init.headers.Authorization, 'Bearer secret');
     assert.equal(server.status, 'ok');
 });
@@ -71,9 +71,9 @@ test('клиент: ошибка сервера — его сообщение, �
     const { server, settings, calls } = makeServer({
         '/v1/downloads': json({ error: 'busy', message: 'Уже качается несколько треков — дождитесь их' }, 429),
     });
-    await assert.rejects(server.start(RESULT.id), { message: 'Уже качается несколько треков — дождитесь их' });
+    await assert.rejects(server.start(RESULT), { message: 'Уже качается несколько треков — дождитесь их' });
     assert.equal(calls[0].init.method, 'POST');
-    assert.equal(calls[0].init.body, JSON.stringify({ id: RESULT.id }));
+    assert.equal(calls[0].init.body, JSON.stringify({ source: 'spotify', id: RESULT.id }));
 
     settings.set('downloadServer', 'http://127.0.0.1:8765');
     assert.equal(server.url, 'http://127.0.0.1:8765');
@@ -181,4 +181,106 @@ test('очередь: сеть моргнула — прощаем, пропал
     const failed = await (() => { const done = run(lost); lost.start(RESULT); return done; })();
     assert.equal(failed.type, 'failed');
     assert.equal(failed.message, 'Сервер загрузки недоступен');
+});
+
+test('клиент: источник в поиске и скачивании, ссылка для прослушивания', async () => {
+    const { server, calls } = makeServer({
+        '/v1/search': json({ results: [{ ...RESULT, id: 'dQw4w9WgXcQ', source: 'youtube' }] }),
+        '/v1/downloads': json({ id: 'job', state: 'queued', progress: 0, stage: '' }, 202),
+        '/v1/previews': json({ url: '/v1/preview/abc.def' }),
+    });
+    const [video] = await server.search('кино', { source: 'youtube' });
+    assert.match(calls[0].path, /&source=youtube&/);
+    assert.equal(video.source, 'youtube');
+
+    await server.start(video);
+    assert.equal(calls[1].init.body, JSON.stringify({ source: 'youtube', id: 'dQw4w9WgXcQ' }));
+    // старые результаты без источника — это Spotify
+    await server.start({ ...RESULT, source: undefined });
+    assert.equal(calls[2].init.body, JSON.stringify({ source: 'spotify', id: RESULT.id }));
+
+    assert.equal(await server.preview(video), 'https://dl.test/v1/preview/abc.def');
+});
+
+test('клиент: долгий ответ — «долго не отвечает», а не «Мак выключен»', async () => {
+    const settings = new Settings({ store: memoryStore() });
+    settings.set('downloadCode', 'secret');
+    // fetch, который ждёт, пока его не отменят по таймауту
+    const hanging = (_, init) => new Promise((_, reject) => {
+        init.signal.addEventListener('abort', () => reject(init.signal.reason));
+    });
+    const server = new DownloadServer({ settings, fallback: 'https://dl.test', fetch: hanging });
+    const realTimeout = AbortSignal.timeout;
+    AbortSignal.timeout = () => realTimeout.call(AbortSignal, 5);
+    // таймер AbortSignal.timeout не держит процесс — держим сами, пока ждём
+    const keepAlive = setInterval(() => {}, 1000);
+    try {
+        const error = await server.search('кино').catch(e => e);
+        assert.ok(error instanceof DownloadError);
+        assert.equal(error.timeout, true);
+        assert.equal(error.offline, false);
+        assert.equal(error.message, 'Сервер долго не отвечает');
+        assert.notEqual(server.status, 'offline');
+    } finally {
+        AbortSignal.timeout = realTimeout;
+        clearInterval(keepAlive);
+    }
+});
+
+test('клиент: код ошибки сервера доступен — устаревший поиск можно отличить', async () => {
+    const { server } = makeServer({ '/v1/search': json({ error: 'superseded', message: 'Запрос устарел' }, 409) });
+    const error = await server.search('mi').catch(e => e);
+    assert.equal(error.code, 'superseded');
+    assert.equal(error.status, 409);
+});
+
+/** Поддельный <audio>: запоминает src, события шлёт тест. */
+class FakeAudio extends EventTarget {
+    src = '';
+    paused = true;
+    preload = '';
+    getAttribute(name) { return name === 'src' ? this.src : null; }
+    removeAttribute() { this.src = ''; }
+    load() {}
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { if (!this.paused) { this.paused = true; this.dispatchEvent(new Event('pause')); } }
+}
+
+test('предпрослушивание: грузится → играет → стоп; второе нажатие останавливает', async () => {
+    const { PreviewPlayer } = await import('../../src/downloads/PreviewPlayer.js');
+    const audio = new FakeAudio();
+    let resolve;
+    const server = { preview: () => new Promise(r => { resolve = r; }) };
+    const player = new PreviewPlayer({ server: /** @type {any} */ (server), createAudio: () => /** @type {any} */ (audio) });
+    const states = [];
+    player.on('state', ({ result, state }) => states.push(`${result?.id}:${state}`));
+
+    player.toggle(RESULT);
+    assert.equal(player.stateOf(RESULT.id), 'loading');
+    assert.match(audio.src, /^blob:/, 'в том же нажатии элемент «отперт» тишиной');
+    audio.dispatchEvent(new Event('playing'));                  // это играет тишина — не в счёт
+    assert.equal(player.stateOf(RESULT.id), 'loading');
+
+    resolve('https://dl.test/v1/preview/t');
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(audio.src, 'https://dl.test/v1/preview/t');
+    audio.dispatchEvent(new Event('playing'));
+    assert.equal(player.stateOf(RESULT.id), 'playing');
+
+    player.toggle(RESULT);
+    assert.equal(player.stateOf(RESULT.id), 'stopped');
+    assert.equal(audio.src, '');
+    assert.deepEqual(states, [`${RESULT.id}:loading`, `${RESULT.id}:playing`, `${RESULT.id}:stopped`]);
+});
+
+test('предпрослушивание: ошибка сервера — состояние error с текстом', async () => {
+    const { PreviewPlayer } = await import('../../src/downloads/PreviewPlayer.js');
+    const server = { preview: async () => { throw new DownloadError('Трек не нашёлся на YouTube Music'); } };
+    const player = new PreviewPlayer({ server: /** @type {any} */ (server), createAudio: () => /** @type {any} */ (new FakeAudio()) });
+    const failed = new Promise(r => player.on('state', detail => { if (detail.state === 'error') r(detail); }));
+    player.play(RESULT);
+    const detail = await failed;
+    assert.equal(detail.message, 'Трек не нашёлся на YouTube Music');
+    assert.equal(detail.result.id, RESULT.id);
+    assert.equal(player.current, null);
 });
