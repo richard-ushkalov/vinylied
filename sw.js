@@ -49,6 +49,7 @@ const SHELL = [
     './src/library/Inbox.js',
     './src/library/Library.js',
     './src/library/Track.js',
+    './src/library/duplicates.js',
     './src/lookup/AcoustIdClient.js',
     './src/lookup/CoverArtArchive.js',
     './src/lookup/Fingerprinter.js',

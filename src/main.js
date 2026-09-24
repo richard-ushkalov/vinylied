@@ -188,7 +188,9 @@ librarySheet.on('add', () => picker.open());
 librarySheet.on('settings', () => settingsSheet.open());
 librarySheet.on('install', () => install.prompt());
 librarySheet.on('recheck', () => lookup.recheckAll());
-librarySheet.on('remove', ({ id }) => library.remove(id));
+librarySheet.on('remove', async ({ ids }) => {
+    for (const id of ids) await library.remove(id);
+});
 librarySheet.on('clear', () => library.clear());
 
 lookup.on('found', ({ id }) => {

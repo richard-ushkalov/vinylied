@@ -194,6 +194,10 @@
 
                     <section class="sheet__section" aria-labelledby="tracks-title">
                         <h3 id="tracks-title" class="sheet__subtitle">Треки</h3>
+                        <div class="sheet__line">
+                            <button class="text-button" type="button" data-action="dedupe">Удалить дубликаты</button>
+                            <p class="sheet__note" data-bind="dedupe" aria-live="polite"></p>
+                        </div>
                         <ul class="track-list" data-bind="tracks"></ul>
                     </section>
                 </div>
