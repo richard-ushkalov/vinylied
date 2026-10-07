@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fixturePaths, importTracks, mockServices, state } from './helpers.js';
+import { fixturePaths, importTracks, mockServices, state, wheel } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
     await mockServices(page);
@@ -54,10 +54,9 @@ test('меньше движения: без вращения диска и ра�
     await page.waitForTimeout(800);
     const disc = page.locator('.slot--current .disc');
     expect(await disc.evaluate(el => el.style.getPropertyValue('--disc-spin'))).toBe('');
-    const blurred = await page.locator('.vinyl__frontside, .vinyl__side').evaluateAll(faces =>
-        faces.filter(face => face.style.filter.includes('blur')).length);
-    // размытие по краям остаётся (это не движение), но в движении — нет
-    expect(blurred).toBeGreaterThanOrEqual(0);
+    // размытие по краям остаётся (это не движение), а в движении — нет:
+    // даже при быстрой прокрутке середина полки не мутнеет
+    expect(await page.evaluate(wheel)).toBe(0);
 });
 
 test('светлая тема: интерфейс не остаётся белым на белом', async ({ page }) => {

@@ -70,3 +70,15 @@ export const withAcoustIdKey = (page, key) => page.route('**/src/config.js', asy
     const body = (await response.text()).replace(/ACOUSTID_KEY = '[^']*'/, `ACOUSTID_KEY = '${key}'`);
     await route.fulfill({ response, body });
 });
+
+/** Быстро крутит колесо над полкой; отдаёт самое сильное размытие в движении. */
+export const wheel = () => {
+    const scene = document.querySelector('.scene');
+    const blur = /** @type {HTMLElement} */ (document.querySelector('.shelf-blur'));
+    let peak = 0;
+    for (let i = 0; i < 6; i++) {
+        scene.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true }));
+        peak = Math.max(peak, Number(blur.style.getPropertyValue('--floor')));
+    }
+    return peak;
+};

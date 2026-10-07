@@ -104,7 +104,9 @@ const previews = new PreviewPlayer({ server: downloadServer });
 const status = new StatusLine($('.status'));
 const scroller = new ShelfScroller({
     viewport: $('.scene'),
+    stage: $('.stage'),
     probe: $('.shelf-probe'),
+    blur: $('.shelf-blur'),
     // прокрутка = перемотка, поэтому прикрываем фильтр, как на пульте
     onScrub: amount => controller.scrub(amount),
 });
@@ -146,7 +148,7 @@ frames.add(progress.tick);
 frames.add(spinner.tick);
 
 // ── связи ──────────────────────────────────────────────────────
-settings.watch(['edgeBlur', 'motionBlur', 'fisheye', 'haptics'], values => scroller.configure(values));
+settings.watch(['edgeBlur', 'motionBlur', 'fisheye', 'lighting', 'blurMode', 'haptics'], values => scroller.configure(values));
 scroller.configure({ reduced: theme.reducedMotion });
 theme.on('motion', ({ reduced }) => scroller.configure({ reduced }));
 theme.on('theme', () => {

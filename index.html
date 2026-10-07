@@ -79,9 +79,15 @@
 
             <main class="main">
                 <div class="scene">
-                    <div class="shelf-probe" aria-hidden="true"></div>
-                    <ul class="list" role="listbox" tabindex="0" aria-label="Полка с пластинками"
-                        aria-describedby="shelf-hint"></ul>
+                    <div class="stage">
+                        <div class="shelf-probe" aria-hidden="true"></div>
+                        <ul class="list" role="listbox" tabindex="0" aria-label="Полка с пластинками"
+                            aria-describedby="shelf-hint"></ul>
+                    </div>
+                    <!-- размытие поверх полки, вне 3D: см. .shelf-blur в shelf.css -->
+                    <div class="shelf-blur" aria-hidden="true">
+                        <div class="shelf-blur__layer"></div>
+                    </div>
                 </div>
                 <p id="shelf-hint" class="visually-hidden">
                     Стрелки вверх и вниз выбирают пластинку, Enter включает или ставит на паузу.

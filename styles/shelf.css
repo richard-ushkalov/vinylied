@@ -28,6 +28,66 @@
     pointer-events: none;
 }
 
+/* ── размытие слоем поверх полки (настройка «Как размывать» → «Слоем») ──
+   Размывается не каждая грань своим filter, а то, что видно сквозь
+   слой (backdrop-filter): швы между корешком и обложкой не расплываются
+   по отдельности, и покадрово в стиль пишутся три числа слою, а не
+   фильтры тридцати граней.
+
+       ░░░░░░░░░░░░░░░  --edge-alpha — у краёв (и не меньше --floor)
+       ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+       ═══ резкая зона ═══  ±--sharp от центра: конверт, что через него
+       ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒       проходит (играющий стоит — резок целиком);
+       ░░░░░░░░░░░░░░░       в движении и она мутнеет до --floor
+
+   Слой ОДИН: у backdrop-filter один радиус, нарастание — маской, а
+   размытие в движении — той же маской, поднятой по всей высоте. Каждый
+   лишний слой — ещё один проход размытия по всей сцене на каждом кадре.
+   Пока размывать нечего, слой выключен (.shelf-blur--on снят).
+
+   Сам .shelf-blur не должен быть «backdrop root»: никаких opacity,
+   filter и mask на нём — иначе слою внутри нечего было бы размывать. */
+.shelf-blur {
+    --sharp: calc(var(--vinyl-size) / 7);
+    --edge-alpha: 0;
+    --floor: 0;
+
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.shelf-blur--on { display: block; }
+
+.shelf-blur__layer {
+    --to: calc(var(--sharp) + 220px);
+
+    /* Только колонка полки: размывать пустой фон по бокам — та же цена
+       за пиксель, что и полку (на всю ширину десктопа было вдвое медленнее).
+       Ширина — с играющим: конверт отъезжает вправо, пластинка влево,
+       вместе это ±0.85 обложки от центра; плюс запас на перспективу. */
+    position: absolute;
+    inset: 0 max(0px, calc(50% - var(--vinyl-size) * 0.95));
+
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    -webkit-mask-image: linear-gradient(to bottom,
+        rgb(0 0 0 / var(--edge-alpha)) calc(50% - var(--to)),
+        rgb(0 0 0 / var(--floor)) calc(50% - var(--sharp)),
+        rgb(0 0 0 / var(--floor)) calc(50% + var(--sharp)),
+        rgb(0 0 0 / var(--edge-alpha)) calc(50% + var(--to)));
+    mask-image: linear-gradient(to bottom,
+        rgb(0 0 0 / var(--edge-alpha)) calc(50% - var(--to)),
+        rgb(0 0 0 / var(--floor)) calc(50% - var(--sharp)),
+        rgb(0 0 0 / var(--floor)) calc(50% + var(--sharp)),
+        rgb(0 0 0 / var(--edge-alpha)) calc(50% + var(--to)));
+}
+
+/* нечем размывать — слоя нет, полка просто резкая */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .shelf-blur { display: none !important; }
+}
+
 .list:focus-visible { outline: none; }
 .list:focus-visible .slot--focused .vinyl__side {
     outline: 2px solid var(--focus);

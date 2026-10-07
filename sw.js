@@ -90,6 +90,7 @@ const SHELL = [
     './src/ui/shelf/ShelfLayout.js',
     './src/ui/shelf/ShelfScroller.js',
     './src/ui/shelf/VinylView.js',
+    './src/ui/shelf/lighting.js',
     './styles/base.css',
     './styles/controls.css',
     './styles/dock.css',

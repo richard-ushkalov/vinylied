@@ -30,6 +30,8 @@ export const SCHEMA = {
     edgeBlur:     { type: 'number', min: 0, max: 1, default: 1 },
     motionBlur:   { type: 'number', min: 0, max: 1, default: 1 },
     fisheye:      { type: 'number', min: 0, max: 1, default: 1 },
+    lighting:     { type: 'number', min: 0, max: 1, default: 0.7 },
+    blurMode:     { type: 'enum', values: ['layer', 'faces'], default: 'layer' },
     haptics:      { type: 'boolean', default: true },
     // звук
     audioMode:    { type: 'enum', values: ['auto', 'vinyl', 'native'], default: 'auto' },
