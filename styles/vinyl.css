@@ -13,13 +13,20 @@
 }
 
 /* общее для всех граней. preserve-3d нужен WebKit:
-   без него грань рисуется плоской картинкой, без перспективы */
+   без него грань рисуется плоской картинкой, без перспективы.
+
+   Грань, повёрнутая от камеры, у закрытой коробки всегда заслонена —
+   не рисуем её вовсе. Это не мелочь: у конверта ниже центра его низ,
+   у конверта выше — верх, это две обложки на каждый конверт, и с
+   фильтрами (свет, размытие) они стоили треть кадра впустую. */
 .vinyl__box > * {
     position: absolute;
     left: 50%;
     top: 50%;
 
     transform-style: preserve-3d;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
     transition: opacity 520ms var(--ease-out);
 }
 
@@ -43,6 +50,15 @@
                translateZ(var(--vinyl-half-thickness));
 }
 
+/* Свет от лампы в камере и размытие по граням: насколько притушить и
+   размыть грань, считает ShelfScroller (lighting.js) и пишет в
+   переменные слота. Фильтр — на плоских гранях: на слоте или коробке
+   он сделал бы transform-style: flat и схлопнул бы 3D. На обложку
+   (<img>) псевдоэлемент-затемнение не повесить — поэтому brightness. */
+.vinyl__frontside { filter: brightness(var(--lit-front, 1)) var(--face-blur,); }
+.vinyl__backside  { filter: brightness(var(--lit-back, 1)) var(--face-blur,); }
+.vinyl__side      { filter: brightness(var(--lit-side, 1)) var(--face-blur,); }
+
 .vinyl__side {
     width: var(--vinyl-size);
     height: var(--vinyl-thickness);
@@ -63,9 +79,33 @@
     transform: translate(-50%, -50%)
                translateZ(calc(var(--vinyl-size) / 2));
 
-    /* цвет приходит из обложки; откат — нейтральный из темы */
-    background: var(--spine, var(--spine-fallback));
+    /* Цвет приходит из обложки; откат — нейтральный из темы. Поверх —
+       картон под лампой (сила — от настройки «Освещение»):
+        - концы корешка дальше от лампы, чем середина, — темнее;
+        - ребро, обращённое к свету, светлее, дальнее — темнее;
+        - на самих рёбрах — блик в 1px и тень: так край ловит свет.
+       Это не padding: padding прозрачный и залит тем же фоном. */
+    --shade: calc(var(--lighting, .7) * .32);
+    --glow: calc(var(--lighting, .7) * .16);
+    background:
+        linear-gradient(to right, rgb(0 0 0 / var(--shade)), transparent 22% 78%, rgb(0 0 0 / var(--shade))),
+        linear-gradient(to bottom, rgb(255 255 255 / var(--glow)), transparent 45%, rgb(0 0 0 / var(--shade))),
+        var(--spine, var(--spine-fallback));
+    box-shadow:
+        inset 0 1px rgb(255 255 255 / calc(var(--glow) * 1.6)),
+        inset 0 -1px rgb(0 0 0 / calc(var(--shade) * 1.4));
     color: var(--spine-text, var(--spine-text-fallback));
+}
+
+/* Конверт выше центра: лампа под ним — свет приходит на нижнее ребро */
+.slot--above .vinyl__side {
+    background:
+        linear-gradient(to right, rgb(0 0 0 / var(--shade)), transparent 22% 78%, rgb(0 0 0 / var(--shade))),
+        linear-gradient(to top, rgb(255 255 255 / var(--glow)), transparent 45%, rgb(0 0 0 / var(--shade))),
+        var(--spine, var(--spine-fallback));
+    box-shadow:
+        inset 0 -1px rgb(255 255 255 / calc(var(--glow) * 1.6)),
+        inset 0 1px rgb(0 0 0 / calc(var(--shade) * 1.4));
 }
 
 .vinyl__side__album,

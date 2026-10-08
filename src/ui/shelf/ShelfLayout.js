@@ -120,6 +120,20 @@ export class ShelfLayout {
     /** Насколько слот сейчас раскрыт по высоте, 0..1. @param {number} index */
     presenceAt(index) { return this.#items[index]?.presence ?? 0; }
 
+    /** Насколько конверт сейчас встал (текущий), 0..1. @param {number} index */
+    expandAt(index) { return this.#items[index]?.expand ?? 0; }
+
+    /** Высота места в стопке сейчас, px. @param {number} index */
+    heightAt(index) {
+        const item = this.#items[index];
+        return item ? this.#height(item) : 0;
+    }
+
+    /** @param {Item} item */
+    #height(item) {
+        return item.presence * this.#size * (NORMAL + item.expand * (CURRENT - NORMAL));
+    }
+
     /**
      * Шаг анимации. Сглаживание экспоненциальное и зависит только от
      * времени: на 60 и на 120 Гц результат одинаковый.
@@ -155,7 +169,7 @@ export class ShelfLayout {
         const centers = new Array(this.#items.length);
         let top = 0;
         this.#items.forEach((item, i) => {
-            const height = item.presence * this.#size * (NORMAL + item.expand * (CURRENT - NORMAL));
+            const height = this.#height(item);
             centers[i] = top + height / 2;
             top += height;
         });

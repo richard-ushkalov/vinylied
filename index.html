@@ -66,6 +66,7 @@
             <symbol id="i-close" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
             <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/></symbol>
             <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></symbol>
+            <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5c.6 4.4 2.6 6.5 7.5 7.4v.2c-4.9.9-6.9 3-7.5 7.4h-.1c-.6-4.4-2.6-6.5-7.4-7.4v-.2c4.8-.9 6.8-3 7.4-7.4z"/></symbol>
         </svg>
 
         <div class="app">
@@ -79,9 +80,15 @@
 
             <main class="main">
                 <div class="scene">
-                    <div class="shelf-probe" aria-hidden="true"></div>
-                    <ul class="list" role="listbox" tabindex="0" aria-label="Полка с пластинками"
-                        aria-describedby="shelf-hint"></ul>
+                    <div class="stage">
+                        <div class="shelf-probe" aria-hidden="true"></div>
+                        <ul class="list" role="listbox" tabindex="0" aria-label="Полка с пластинками"
+                            aria-describedby="shelf-hint"></ul>
+                    </div>
+                    <!-- размытие поверх полки, вне 3D: см. .shelf-blur в shelf.css -->
+                    <div class="shelf-blur" aria-hidden="true">
+                        <div class="shelf-blur__layer"></div>
+                    </div>
                 </div>
                 <p id="shelf-hint" class="visually-hidden">
                     Стрелки вверх и вниз выбирают пластинку, Enter включает или ставит на паузу.
@@ -141,6 +148,11 @@
                 <div class="dock__actions">
                     <button class="icon-button icon-button--primary" type="button" data-action="play" aria-label="Играть">
                         <svg aria-hidden="true"><use href="#i-play"/></svg>
+                    </button>
+                    <!-- «Похожее»: только у кого есть код сервера — без него не послушать и не скачать -->
+                    <button class="icon-button" type="button" data-action="discover" aria-label="Похожее и микс дня"
+                            aria-haspopup="dialog" aria-controls="discover-sheet" hidden>
+                        <svg aria-hidden="true"><use href="#i-spark"/></svg>
                     </button>
                     <button class="icon-button" type="button" data-action="search" aria-label="Поиск по полке" aria-expanded="false">
                         <svg aria-hidden="true"><use href="#i-search"/></svg>
@@ -217,6 +229,30 @@
                     <button class="text-button" type="button" data-action="settings">Настройки</button>
                     <button class="text-button text-button--danger" type="button" data-action="clear">Очистить полку</button>
                 </footer>
+            </div>
+        </dialog>
+
+        <dialog class="sheet" id="discover-sheet" aria-labelledby="discover-title">
+            <div class="sheet__panel">
+                <header class="sheet__header">
+                    <h2 id="discover-title" class="sheet__title">Похожее</h2>
+                    <button class="icon-button icon-button--small icon-button--ghost" type="button" data-action="close" aria-label="Закрыть">
+                        <svg aria-hidden="true"><use href="#i-close"/></svg>
+                    </button>
+                </header>
+                <div class="sheet__body discover">
+                    <fieldset class="segmented discover__tabs">
+                        <legend class="visually-hidden">Что показать</legend>
+                        <label><input type="radio" name="discoverTab" value="track" checked><span>На этот трек</span></label>
+                        <label><input type="radio" name="discoverTab" value="mix"><span>Микс дня</span></label>
+                    </fieldset>
+                    <p class="sheet__note" data-bind="note" role="status"></p>
+                    <div class="sheet__row">
+                        <button class="pill-button pill-button--small" type="button" data-action="add-all" hidden>Добавить все</button>
+                        <button class="pill-button pill-button--small" type="button" data-action="rebuild" hidden>Собрать заново</button>
+                    </div>
+                    <ul class="suggest__list discover__list" data-bind="list"></ul>
+                </div>
             </div>
         </dialog>
 

@@ -38,18 +38,28 @@
     overflow: hidden;
 }
 
+/* Сцена — плоский контейнер: от её размера считается --vinyl-size
+   (container query), она ловит касания. Внутри две части: 3D-полка
+   (.stage) и слой размытия поверх неё (.shelf-blur). Слой нельзя
+   класть в 3D: там он встал бы плоскостью между конвертами, и
+   выступающие корешки оказались бы перед ним. */
 .scene {
     position: relative;
     height: 94%;
     width: 100%;
 
     container-type: size;
+    touch-action: none;
+}
+
+.stage {
+    position: absolute;
+    inset: 0;
 
     display: flex;
     justify-content: center;
 
     perspective: var(--perspective);
-    touch-action: none;
 
     /* звено цепочки 3D-контекста. Chrome обходится без него,
        WebKit теряет перспективу, если хоть одно звено плоское */

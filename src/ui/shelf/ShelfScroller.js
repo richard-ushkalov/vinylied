@@ -1,26 +1,33 @@
 import { Emitter } from '../../core/Emitter.js';
 import { ShelfLayout } from './ShelfLayout.js';
+import { faceLight } from './lighting.js';
 
 const FISH_ANGLE = 20;          // градусов наклона у краёв при силе 1
 const FISH_DEPTH = 140;         // насколько края утопают вглубь
 const FISH_SPREAD = 320;        // на какой дистанции эффект набирает силу
-const MAX_BLUR = 4;             // px размытия у самых дальних
+const MAX_BLUR = 4;             // px размытия у самых дальних (размытие по граням)
 const VISIBLE = FISH_SPREAD * 1.8;   // дальше слот не рисуем вообще
 const RUSH_SPEED = 1560;        // px/с, при которых размытие в движении максимальное
 const EASE = 0.14;              // с: постоянная времени камеры
 const THRESHOLD = 6;            // px, после которых это уже прокрутка, а не тап
 const PROJECT_MS = 220;         // на сколько вперёд «долетает» бросок
 const WHEEL_SNAP_MS = 140;      // пауза колеса, после которой полка доводится
+const STAND = Math.PI / 2;      // текущий конверт встаёт на 90°
+const BLEED = 6;                // px: размытие у края резкой зоны «затекает» внутрь
+const DEG = Math.PI / 180;
 
 /**
- * @typedef {{ edgeBlur: number, motionBlur: number, fisheye: number,
- *             haptics: boolean, reduced: boolean }} ScrollerOptions
- * @typedef {{ transform: string, blur: string, culled: boolean, hidden: boolean }} SlotState
+ * @typedef {{ edgeBlur: number, motionBlur: number, fisheye: number, lighting: number,
+ *             blurMode: 'faces' | 'layer', haptics: boolean, reduced: boolean }} ScrollerOptions
+ * @typedef {{ transform: string, light: string, blur: string, above: boolean,
+ *             culled: boolean, hidden: boolean }} SlotState
+ *   light — «корешок верх низ», множители яркости граней; '' — без света;
+ *   blur — фильтр размытия граней (только в режиме 'faces')
  */
 
 /**
  * Камера над полкой: прокрутка колесом и пальцем, доводка к конверту,
- * «рыбий глаз», размытие.
+ * «рыбий глаз», свет и размытие.
  *
  * Геометрию считает ShelfLayout, а здесь — только камера и отрисовка:
  *  - pos — координата модели, которая сейчас в центре сцены;
@@ -33,20 +40,32 @@ const WHEEL_SNAP_MS = 140;      // пауза колеса, после кото�
  *    ни getBoundingClientRect, ни offsetTop в покадровом коде нет;
  *  - обновляется только видимое окно (двоичный поиск по центрам), в стиль
  *    пишется только изменившееся;
- *  - всё сглаживание — по времени, а не по кадрам.
+ *  - всё сглаживание — по времени, а не по кадрам;
+ *  - свет: каждому слоту — три числа, яркость его граней (lighting.js);
+ *  - размытие двумя способами (настройка «Как размывать»):
+ *      'faces' — фильтром на гранях каждого конверта, сила — по удалению
+ *                от центра и по скорости;
+ *      'layer' — одним слоем поверх сцены (.shelf-blur): ему пишутся
+ *                только «резкая зона» и сила размытия в движении.
+ *    Слой не размывает швы между гранями по отдельности и в замере
+ *    (Chromium без GPU, эмуляция Pixel 7) быстрее: 60 кадров/с при
+ *    прокрутке против 58. Только если он узкий — по колонке конвертов:
+ *    на всю ширину десктопа было 28. Грани — запасной путь, если
+ *    backdrop-filter где-то окажется тяжёлым.
  *
  * События: 'focus' {id} — сменился ближайший к центру; 'move' — кадр.
  */
 export class ShelfScroller extends Emitter {
     #viewport;
+    #stage;
     #probe;
+    #blur;
     #onScrub;
     #layout = new ShelfLayout();
 
     /** @type {string[]} */ #ids = [];
     /** @type {Map<string, HTMLElement>} */ #elements = new Map();
     /** @type {WeakMap<HTMLElement, SlotState>} */ #state = new WeakMap();
-    /** @type {WeakMap<HTMLElement, NodeListOf<HTMLElement>>} */ #faces = new WeakMap();
     /** @type {Set<string> | null} */ #drawn = null;    // null — пройти всех
 
     #pos = 0;
@@ -56,10 +75,14 @@ export class ShelfScroller extends Emitter {
     #frame = 0;
     #lastTime = 0;
     #viewHeight = 0;
+    #distance = 1000;         // px до камеры (perspective) — там и лампа
+    #sharp = -1;              // px, последняя записанная «резкая зона»
+    #layer = '';              // последнее записанное слою: «кромка пол»
     /** @type {string | null} */ #focused = null;
 
     /** @type {ScrollerOptions} */
-    #options = { edgeBlur: 1, motionBlur: 1, fisheye: 1, haptics: true, reduced: false };
+    #options = { edgeBlur: 1, motionBlur: 1, fisheye: 1, lighting: 0.7,
+        blurMode: /** @type {'faces' | 'layer'} */ ('layer'), haptics: true, reduced: false };
 
     // палец
     /** @type {number | null} */ #dragId = null;
@@ -73,13 +96,18 @@ export class ShelfScroller extends Emitter {
     #snapTimer = 0;
 
     /**
-     * @param {{ viewport: HTMLElement, probe: HTMLElement, onScrub?: (amount: number) => void }} deps
-     *   viewport — сцена; probe — невидимый элемент шириной var(--vinyl-size)
+     * @param {{ viewport: HTMLElement, stage: HTMLElement, probe: HTMLElement, blur: HTMLElement,
+     *           onScrub?: (amount: number) => void }} deps
+     *   viewport — сцена (ловит касания); stage — её 3D-часть с perspective;
+     *   probe — невидимый элемент шириной var(--vinyl-size); blur — слой
+     *   размытия поверх сцены
      */
-    constructor({ viewport, probe, onScrub }) {
+    constructor({ viewport, stage, probe, blur, onScrub }) {
         super();
         this.#viewport = viewport;
+        this.#stage = stage;
         this.#probe = probe;
+        this.#blur = blur;
         this.#onScrub = onScrub ?? (() => {});
     }
 
@@ -88,6 +116,9 @@ export class ShelfScroller extends Emitter {
     /** @param {Partial<ScrollerOptions>} options */
     configure(options) {
         Object.assign(this.#options, options);
+        // силу света на корешке берёт CSS
+        this.#viewport.style.setProperty('--lighting', String(this.#options.lighting));
+        this.#layer = '';
         this.#drawn = null;
         this.#draw();
     }
@@ -212,6 +243,7 @@ export class ShelfScroller extends Emitter {
     #measure() {
         const size = this.#probe.offsetWidth;
         this.#viewHeight = this.#viewport.clientHeight;
+        this.#distance = parseFloat(getComputedStyle(this.#stage).perspective) || this.#distance;
         const before = this.#layout.size;
         if (!size || !this.#layout.setMetrics(size)) { this.#draw(); return; }
         // поворот экрана и смена размера — без поездки: камера остаётся
@@ -269,11 +301,15 @@ export class ShelfScroller extends Emitter {
         const ids = this.#ids;
         if (!ids.length || !this.#layout.size) { this.emit('move'); return; }
 
-        const { edgeBlur, motionBlur, fisheye, reduced } = this.#options;
+        const { edgeBlur, motionBlur, fisheye, lighting, blurMode, reduced } = this.#options;
         const rush = reduced ? 0 : Math.min(1, this.#speed / RUSH_SPEED) * motionBlur;
         const angle = FISH_ANGLE * fisheye;
         const depth = FISH_DEPTH * fisheye;
+        const size = this.#layout.size;
         const centers = this.#layout.centers();
+        // резкая зона — докуда от центра тянется конверт, который через него
+        // проходит: стоящий текущий высотой в обложку остаётся резким целиком
+        let sharp = size / 7;
         const [first, last] = this.#layout.range(this.#pos - VISIBLE, this.#pos + VISIBLE);
 
         // Уходящих из окна отсекаем (всех, если окно неизвестно), пришедших
@@ -292,22 +328,76 @@ export class ShelfScroller extends Emitter {
 
             // рыбий глаз: чем дальше от центра, тем сильнее наклон и утопание
             const t = Math.max(-1, Math.min(1, offset / FISH_SPREAD));
-            const transform = `translate3d(0, ${offset.toFixed(2)}px, ${(-Math.abs(t) * depth).toFixed(1)}px)`
+            const z = -Math.abs(t) * depth;
+            const transform = `translate3d(0, ${offset.toFixed(2)}px, ${z.toFixed(1)}px)`
                 + ` rotateX(${(-t * angle).toFixed(2)}deg)`;
 
-            // У краёв размывает всегда, в движении — ещё и по центру.
-            // Фильтр — только на лицевую грань и корешок: любой filter на
-            // слоте или коробке делает transform-style: flat и схлопывает 3D.
-            const amount = Math.max(0, (Math.abs(t) * edgeBlur + rush * 0.9) * MAX_BLUR - 0.4);
-            const blur = amount > 0.25 ? `blur(${amount.toFixed(2)}px)` : '';
+            // Свет: текущий конверт встаёт (rotateX(-90deg) и полразмера
+            // вперёд в CSS) — его обложка поворачивается к лампе.
+            const expand = this.#layout.expandAt(i);
+            const near = z + expand * size / 2;
+            const light = lighting > 0 ? this.#light({
+                y: offset,
+                z: near,
+                angle: -t * angle * DEG - expand * STAND,
+                size,
+                distance: this.#distance,
+                strength: lighting,
+            }) : '';
+
+            // докуда конверт тянется от центра — уже на экране: выдвинутый
+            // к камере стоящий конверт перспектива делает выше обложки
+            const scale = this.#distance / Math.max(1, this.#distance - near);
+            sharp = Math.max(sharp, (this.#layout.heightAt(i) / 2 - Math.abs(offset)) * scale + BLEED);
+
+            // По граням: у краёв размывает всегда, в движении — ещё и по центру
+            let blur = '';
+            if (blurMode === 'faces') {
+                const amount = Math.max(0, (Math.abs(t) * edgeBlur + rush * 0.9) * MAX_BLUR - 0.4);
+                // шаг в четверть пикселя: глазу незаметно, а записей в стиль
+                // и перерасчётов фильтра вчетверо меньше
+                if (amount > 0.25) blur = `blur(${(Math.round(amount * 4) / 4).toFixed(2)}px)`;
+            }
 
             // отсеянный и уже схлопнутый — не рисуем
             const hidden = !this.#layout.isPresent(i) && this.#layout.presenceAt(i) < 0.02;
-            this.#write(element, { culled: false, transform, blur, hidden });
+            this.#write(element, { culled: false, transform, light, blur, above: offset < 0, hidden });
         }
 
+        this.#writeLayer(blurMode === 'layer', sharp, edgeBlur, rush);
         this.#updateFocus();
         this.emit('move');
+    }
+
+    /** @param {Parameters<typeof faceLight>[0]} slot */
+    #light(slot) {
+        const { side, front, back } = faceLight(slot);
+        return `${side} ${front} ${back}`;
+    }
+
+    /**
+     * Слою размытия — три числа и только при изменении: докуда держать
+     * резкость, насколько размыть края и насколько — всё в движении.
+     * Нечего размывать — слой выключен совсем, backdrop-filter не считается.
+     * @param {boolean} on режим 'layer'
+     * @param {number} sharp px от центра
+     * @param {number} edgeBlur 0..1
+     * @param {number} rush 0..1
+     */
+    #writeLayer(on, sharp, edgeBlur, rush) {
+        const floor = on && rush > 0.02 ? Math.round(rush * 50) / 50 : 0;
+        const edge = on ? Math.max(edgeBlur, floor) : 0;
+        const layer = `${edge} ${floor}`;
+        if (layer !== this.#layer) {
+            this.#blur.classList.toggle('shelf-blur--on', edge > 0);
+            this.#blur.style.setProperty('--edge-alpha', String(edge));
+            this.#blur.style.setProperty('--floor', String(floor));
+            this.#layer = layer;
+        }
+        if (on && Math.abs(sharp - this.#sharp) >= 1) {
+            this.#sharp = sharp;
+            this.#blur.style.setProperty('--sharp', `${Math.round(sharp)}px`);
+        }
     }
 
     /**
@@ -317,7 +407,8 @@ export class ShelfScroller extends Emitter {
      */
     #write(element, next) {
         if (!element) return;
-        const state = this.#state.get(element) ?? { transform: '', blur: '', culled: false, hidden: false };
+        const state = this.#state.get(element)
+            ?? { transform: '', light: '', blur: '', above: false, culled: false, hidden: false };
         if (next.culled !== undefined && next.culled !== state.culled) {
             element.classList.toggle('slot--culled', next.culled);
             state.culled = next.culled;
@@ -330,13 +421,30 @@ export class ShelfScroller extends Emitter {
             element.style.transform = next.transform;
             state.transform = next.transform;
         }
-        if (next.blur !== undefined && next.blur !== state.blur) {
-            let faces = this.#faces.get(element);
-            if (!faces) {
-                faces = element.querySelectorAll('.vinyl__frontside, .vinyl__side');
-                this.#faces.set(element, faces);
+        if (next.above !== undefined && next.above !== state.above) {
+            element.classList.toggle('slot--above', next.above);
+            state.above = next.above;
+        }
+        if (next.light !== undefined && next.light !== state.light) {
+            // Яркость граней — переменными слота, фильтр задаёт CSS. Фильтр
+            // висит на плоских гранях, а не на слоте или коробке: там он
+            // сделал бы transform-style: flat и схлопнул бы 3D.
+            const style = element.style;
+            if (next.light) {
+                const [side, front, back] = next.light.split(' ');
+                style.setProperty('--lit-side', side);
+                style.setProperty('--lit-front', front);
+                style.setProperty('--lit-back', back);
+            } else {
+                style.removeProperty('--lit-side');
+                style.removeProperty('--lit-front');
+                style.removeProperty('--lit-back');
             }
-            for (const face of faces) face.style.filter = next.blur;
+            state.light = next.light;
+        }
+        if (next.blur !== undefined && next.blur !== state.blur) {
+            if (next.blur) element.style.setProperty('--face-blur', next.blur);
+            else element.style.removeProperty('--face-blur');
             state.blur = next.blur;
         }
         this.#state.set(element, state);

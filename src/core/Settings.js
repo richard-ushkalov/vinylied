@@ -30,6 +30,8 @@ export const SCHEMA = {
     edgeBlur:     { type: 'number', min: 0, max: 1, default: 1 },
     motionBlur:   { type: 'number', min: 0, max: 1, default: 1 },
     fisheye:      { type: 'number', min: 0, max: 1, default: 1 },
+    lighting:     { type: 'number', min: 0, max: 1, default: 0.7 },
+    blurMode:     { type: 'enum', values: ['layer', 'faces'], default: 'layer' },
     haptics:      { type: 'boolean', default: true },
     // звук
     audioMode:    { type: 'enum', values: ['auto', 'vinyl', 'native'], default: 'auto' },
@@ -46,6 +48,7 @@ export const SCHEMA = {
     onlineLookup: { type: 'boolean', default: true },
     // пусто — встроенный ключ из src/config.js
     acoustidKey:  { type: 'string', max: 32, pattern: /^[A-Za-z0-9]*$/, default: '' },
+    lastfmKey:    { type: 'string', max: 32, pattern: /^[A-Fa-f0-9]*$/, default: '' },
     // скачивание со своего сервера (server/): код доступа и адрес;
     // пустой адрес — встроенный из src/config.js
     downloadCode:   { type: 'string', max: 64, pattern: /^[A-Za-z0-9_-]*$/, default: '' },

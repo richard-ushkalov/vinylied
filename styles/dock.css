@@ -106,7 +106,9 @@
 
 .dock--search .dock__now,
 .dock--search [data-action="search"],
+.dock--search [data-action="discover"],
 .dock--search [data-action="add"] { display: none; }
+.dock__actions [hidden] { display: none; }
 
 /* ── «Скачать из сети»: над панелью, пока открыт поиск ──────────
    Абсолютом, чтобы не двигать панель и полку: список появляется
