@@ -3,12 +3,16 @@
  * создаются объекты и связываются их события. Сами классы про DOM
  * снаружи себя не знают: всё нужное получают в конструкторе.
  */
-import { ACOUSTID_KEY, DOWNLOAD_SERVER } from './config.js';
+import { ACOUSTID_KEY, DOWNLOAD_SERVER, LASTFM_KEY } from './config.js';
 import { FrameLoop } from './core/FrameLoop.js';
 import { Settings } from './core/Settings.js';
 import { tracksLabel } from './core/format.js';
 import { platform } from './core/platform.js';
 import { Player } from './audio/Player.js';
+import { DailyMix } from './discover/DailyMix.js';
+import { LastFmClient } from './discover/LastFmClient.js';
+import { PlayHistory } from './discover/PlayHistory.js';
+import { resolveTrack } from './discover/resolve.js';
 import { DownloadQueue } from './downloads/DownloadQueue.js';
 import { DownloadServer } from './downloads/DownloadServer.js';
 import { PendingTrack } from './downloads/PendingTrack.js';
@@ -24,6 +28,7 @@ import { CoverArtArchive } from './lookup/CoverArtArchive.js';
 import { Fingerprinter } from './lookup/Fingerprinter.js';
 import { ITunesClient } from './lookup/ITunesClient.js';
 import { LookupQueue } from './lookup/LookupQueue.js';
+import { norm, same } from './lookup/Matcher.js';
 import { MetadataResolver } from './lookup/MetadataResolver.js';
 import { DiscSpinner } from './playback/DiscSpinner.js';
 import { MediaSessionBridge } from './playback/MediaSessionBridge.js';
@@ -33,6 +38,7 @@ import { ResumeStore } from './playback/ResumeStore.js';
 import { LocalSource } from './playback/sources/LocalSource.js';
 import { InstallPrompt } from './pwa/InstallPrompt.js';
 import { registerServiceWorker } from './pwa/registerServiceWorker.js';
+import { DiscoverSheet } from './ui/DiscoverSheet.js';
 import { Dock } from './ui/Dock.js';
 import { EmptyState } from './ui/EmptyState.js';
 import { FilePicker } from './ui/FilePicker.js';
@@ -78,10 +84,13 @@ const resume = new ResumeStore();
 
 // ── поиск обложек и названий ───────────────────────────────────
 const acoustId = new AcoustIdClient({ key: ACOUSTID_KEY });
+// один на всех: у iTunes лимит 20 запросов в минуту, и обложки «Похожего»
+// встают в ту же очередь, что поиск обложек для полки
+const itunes = new ITunesClient();
 const resolver = new MetadataResolver({
     acoustId,
     fingerprinter: new Fingerprinter(),
-    itunes: new ITunesClient(),
+    itunes,
     coverArt: new CoverArtArchive(),
 });
 const lookup = new LookupQueue({ library, resolver, settings });
@@ -99,6 +108,28 @@ settings.on('change', ({ key, value }) => {
 const downloadServer = new DownloadServer({ settings, fallback: DOWNLOAD_SERVER });
 const downloads = new DownloadQueue({ server: downloadServer });
 const previews = new PreviewPlayer({ server: downloadServer });
+
+// ── «Похожее» и микс дня ───────────────────────────────────────
+// Что слушать — Last.fm (с телефона, Мак не нужен); откуда звук — свой
+// сервер, по названию: Spotify, а не нашлось — YouTube.
+const lastfm = new LastFmClient({ key: settings.get('lastfmKey') || LASTFM_KEY });
+settings.on('change', ({ key, value }) => { if (key === 'lastfmKey') lastfm.setKey(value || LASTFM_KEY); });
+const plays = new PlayHistory();
+/** @param {{ title: string, artist: string }} track */
+const songKey = track => `${norm(track.artist)}|${norm(track.title)}`;
+/** то, что уже стоит на полке, не советуем @param {{ key: string }} item */
+const isOnShelf = item => [...tracks.values()].some(track => songKey(track) === item.key);
+/**
+ * Обложка совета — из iTunes, если поиск обложек не выключен.
+ * @param {{ title: string, artist: string }} item
+ */
+const coverOf = async item => {
+    if (!settings.get('onlineLookup')) return null;
+    const found = await itunes.search(`${item.artist} ${item.title}`, 'song');
+    const hit = found.find(song => same(song.trackName, item.title) && same(song.artistName, item.artist));
+    return hit ? ITunesClient.artworkUrl(hit, 200) : null;
+};
+const mix = new DailyMix({ lastfm, tracks: () => [...tracks.values()], history: plays, isOnShelf, cover: coverOf });
 
 // ── интерфейс ──────────────────────────────────────────────────
 const status = new StatusLine($('.status'));
@@ -128,6 +159,17 @@ const librarySheet = new LibrarySheet({
 });
 const settingsSheet = new SettingsSheet({
     dialog: $('#settings-sheet'), settings, player, platform, acoustId, downloads: downloadServer,
+});
+const discover = new DiscoverSheet({
+    dialog: $('#discover-sheet'),
+    lastfm,
+    mix,
+    server: downloadServer,
+    downloads,
+    previews,
+    resolve: item => resolveTrack(downloadServer, item),
+    isOnShelf,
+    cover: coverOf,
 });
 const suggestions = new SearchSuggestions({
     root: $('.suggest'),
@@ -166,6 +208,8 @@ const syncDockCover = () => {
 };
 scroller.on('move', syncDockCover);
 
+const MIX_DELAY = 5000;   // мс после запуска: сначала полка, потом микс
+
 // Пока идёт запуск, состояние восстанавливается, а не меняется: конверт
 // «продолжить с места» должен сразу стоять по центру, без анимаций.
 let booting = true;
@@ -173,6 +217,8 @@ let booting = true;
 controller.on('change', ({ current, previous, intent, trackChanged }) => {
     // ручная смена трека: полоса плавно отматывается к началу
     if (trackChanged) progress.rewind();
+    // что слушают сейчас — от этого и отталкивается микс дня
+    if (current && intent === 'playing' && !booting) plays.add(current);
     shelf.setCurrent(current, previous, { instant: booting });
     dock.setTrack(controller.track);
     dock.setPlaying(intent === 'playing');
@@ -208,6 +254,10 @@ dock.on('search', ({ query }) => {
     if (!query) previews.stop();
 });
 dock.on('submit', () => suggestions.searchNow());
+dock.on('discover', () => {
+    const track = controller.current ? tracks.get(controller.current) ?? null : null;
+    discover.open({ track });
+});
 dock.on('reveal', () => {
     const id = controller.current;
     if (!id) return;
@@ -232,6 +282,7 @@ librarySheet.on('clear', () => library.clear());
 // скачанный файл ложится в библиотеку под тем же id и занимает её место,
 // а обложку и названия потом, как всегда, доводит поиск метаданных.
 suggestions.on('download', ({ result }) => downloads.start(result));
+discover.on('download', ({ result }) => downloads.start(result));
 
 // Предпрослушивание и полка не звучат разом: включили одно — другое
 // на паузу. Системная панель на это время — у предпрослушивания.
@@ -251,6 +302,11 @@ previews.on('state', ({ result, state }) => {
 });
 controller.on('change', ({ intent }) => { if (intent === 'playing') previews.stop(); });
 suggestions.on('reveal', ({ id }) => { if (tracks.has(id)) shelf.follow(id); });
+discover.on('reveal', ({ id }) => { if (tracks.has(id)) shelf.follow(id); });
+
+// «Похожее» есть, когда есть и советы (ключ Last.fm), и звук (код сервера)
+const syncDiscover = () => dock.setDiscover(lastfm.enabled && downloadServer.enabled);
+settings.on('change', ({ key }) => { if (key === 'lastfmKey' || key === 'downloadCode') syncDiscover(); });
 downloads.on('added', ({ id, result }) => {
     shelf.addPending(new PendingTrack(id, result));
     empty.toggle(false);
@@ -385,6 +441,8 @@ const start = async () => {
     settingsSheet.attach();
     downloadServer.attach();
     suggestions.attach();
+    discover.attach();
+    syncDiscover();
     empty.setInstallHint(install.iosHint);
 
     let records = [];
@@ -408,6 +466,13 @@ const start = async () => {
     booting = false;
 
     lookup.start();
+
+    // Микс дня — раз в день, в фоне, когда приложение уже встало. Только
+    // если поиск обложек и названий в сети не выключен: он отправляет
+    // названия с полки наружу, а это решение пользователя.
+    if (lastfm.enabled && downloadServer.enabled && settings.get('onlineLookup') && tracks.size && !mix.current) {
+        setTimeout(() => mix.rebuild().catch(() => {}), MIX_DELAY);
+    }
 
     // присланное через «Поделиться» и «Открыть с помощью»
     const shared = await inbox.take().catch(() => []);

@@ -183,6 +183,34 @@ test('очередь: сеть моргнула — прощаем, пропал
     assert.equal(failed.message, 'Сервер загрузки недоступен');
 });
 
+test('очередь: одновременно не больше двух, остальные ждут своей очереди', async () => {
+    // сервер, у которого каждое задание держится, пока его не отпустят
+    const release = [];
+    const started = [];
+    const server = {
+        start: async result => { started.push(result.id); return { id: result.id, state: 'running', progress: 0, stage: 'Качаю' }; },
+        job: id => new Promise(resolve => release.push(() => resolve({ id, state: 'done', progress: 1, stage: 'Готово' }))),
+        file: async () => new File(['x'], 'a.m4a'),
+    };
+    const queue = new DownloadQueue({ server: /** @type {any} */ (server), sleep: async () => {} });
+    const done = [];
+    queue.on('done', ({ result }) => done.push(result.id));
+    const ids = ['a', 'b', 'c'].map(id => queue.start({ ...RESULT, id }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    assert.deepEqual(started, ['a', 'b'], 'третье ждёт');
+    assert.equal(queue.get(ids[2])?.state, 'waiting');
+    assert.equal(queue.get(ids[2])?.stage, 'В очереди');
+    assert.equal(queue.active, 3, 'ждущее тоже ещё не на полке');
+
+    release.shift()();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(done, ['a']);
+    assert.deepEqual(started, ['a', 'b', 'c'], 'место освободилось — пошло третье');
+    assert.equal(queue.get(ids[2])?.state, 'running');
+});
+
 test('клиент: источник в поиске и скачивании, ссылка для прослушивания', async () => {
     const { server, calls } = makeServer({
         '/v1/search': json({ results: [{ ...RESULT, id: 'dQw4w9WgXcQ', source: 'youtube' }] }),

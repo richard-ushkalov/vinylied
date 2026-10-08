@@ -20,3 +20,14 @@ export const ACOUSTID_KEY = 'U2nhVTXKL3';
  * Cloudflare. Без кода доступа (Настройки → Скачивание) не используется.
  */
 export const DOWNLOAD_SERVER = 'https://dl.richard-ushkalov.com';
+
+/**
+ * Ключ Last.fm — для «Похожего» и микса дня: по названию и исполнителю
+ * Last.fm отвечает, что ещё слушают те, кто слушает это.
+ *
+ * Как получить (бесплатно): https://www.last.fm/api/account/create —
+ * название «Vinilyed», остальное можно не заполнять; сюда — «API key»
+ * («Shared secret» не нужен: методы только на чтение). Как и у AcoustID,
+ * ключ публичный по природе. Пустая строка — «Похожего» нет.
+ */
+export const LASTFM_KEY = '0064d69d957ad20ffaa2b9ed96ef10d5';

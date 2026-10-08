@@ -174,3 +174,8 @@ kbd {
     font-size: 12px;
     text-align: center;
 }
+
+/* ── «Похожее»: строки — те же, что у поиска в сети (.suggest__*) ── */
+.discover__tabs label { min-height: 36px; padding: 0 14px; }
+.discover [hidden] { display: none; }
+.discover__list { margin: 0; }

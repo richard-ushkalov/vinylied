@@ -12,10 +12,11 @@ export const PNG = makePng(64, [10, 120, 200]);
  * Внешние сервисы в тестах — только моки. По умолчанию все молчат
  * («не нашли»); тест подставляет свои ответы.
  * @param {import('@playwright/test').Page} page
- * @param {{ itunes?: (url: URL) => any[], acoustid?: (url: URL) => any, image?: boolean }} [handlers]
+ * @param {{ itunes?: (url: URL) => any[], acoustid?: (url: URL) => any, image?: boolean,
+ *           lastfm?: (url: URL) => any }} [handlers]
  */
 export const mockServices = async (page, handlers = {}) => {
-    const calls = { itunes: [], acoustid: [], images: [] };
+    const calls = { itunes: [], acoustid: [], images: [], lastfm: [] };
     const cors = { 'access-control-allow-origin': '*' };
     await page.route(/itunes\.apple\.com\/search/, route => {
         const url = new URL(route.request().url());
@@ -28,6 +29,13 @@ export const mockServices = async (page, handlers = {}) => {
         calls.acoustid.push(url.searchParams.get('duration'));
         route.fulfill({ status: 200, headers: cors, contentType: 'application/json',
             body: JSON.stringify(handlers.acoustid?.(url) ?? { status: 'ok', results: [] }) });
+    });
+    // Last.fm по умолчанию «не знает» ничего похожего
+    await page.route(/ws\.audioscrobbler\.com/, route => {
+        const url = new URL(route.request().url());
+        calls.lastfm.push(url);
+        route.fulfill({ status: 200, headers: cors, contentType: 'application/json',
+            body: JSON.stringify(handlers.lastfm?.(url) ?? { error: 6, message: 'Track not found' }) });
     });
     await page.route(/coverartarchive\.org|mzstatic\.com|example\.test/, route => {
         calls.images.push(route.request().url());

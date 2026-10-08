@@ -5,7 +5,7 @@ const SEARCH_DEBOUNCE = 120;
 /**
  * Нижняя панель: что играет, мини-обложка, ⏯, поиск, «добавить».
  *
- * События: 'toggle', 'add', 'reveal' (показать играющий конверт),
+ * События: 'toggle', 'add', 'discover' («Похожее»), 'reveal' (показать играющий конверт),
  * 'search' {query}, 'submit' {query} — «Найти» на клавиатуре.
  */
 export class Dock extends Emitter {
@@ -26,6 +26,12 @@ export class Dock extends Emitter {
         this.playButton = $('[data-action="play"]');
         this.playIcon = /** @type {SVGUseElement} */ (this.playButton.querySelector('use'));
         this.searchButton = $('[data-action="search"]');
+        this.discoverButton = $('[data-action="discover"]');
+    }
+
+    /** Кнопка «Похожее»: есть, когда есть откуда взять и советы, и звук. @param {boolean} shown */
+    setDiscover(shown) {
+        this.discoverButton.hidden = !shown;
     }
 
     get searching() { return this.#root.classList.contains('dock--search'); }
@@ -36,6 +42,7 @@ export class Dock extends Emitter {
             switch (target?.getAttribute('data-action')) {
                 case 'play': this.emit('toggle'); break;
                 case 'add': this.emit('add'); break;
+                case 'discover': this.emit('discover'); break;
                 case 'reveal': this.emit('reveal'); break;
                 case 'search': this.openSearch(); break;
                 case 'search-close': this.closeSearch(); break;

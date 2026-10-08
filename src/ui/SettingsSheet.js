@@ -103,6 +103,10 @@ export class SettingsSheet {
                       hint: 'Ключ приложения: acoustid.org → Applications → New application. '
                           + 'Личный ключ со страницы «API key» не подойдёт. Пусто — встроенный ключ.',
                       status: { source: acoustId, text: () => describeAcoustIdStatus(acoustId.status) } },
+                    { key: 'lastfmKey', label: 'Ключ Last.fm', type: 'text', placeholder: 'встроенный', maxLength: 32,
+                      invalid: 'Ключ Last.fm — 32 знака, цифры и буквы a–f.',
+                      hint: 'Для «Похожего» и микса дня: last.fm/api/account/create → «API key». '
+                          + 'Наружу уходят названия и исполнители треков. Пусто — встроенный ключ.' },
                 ],
             },
             {
